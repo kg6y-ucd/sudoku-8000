@@ -1,8 +1,8 @@
 #!/bin/sh
 
 # pcm
-od -t x2 -v sudoku-sfx1-22050.pcm | sed -e 's/.......//' >> sudoku-sfx1-22050.pcm.tal
-od -t x2 -v sudoku-sfx2-22050.pcm | sed -e 's/.......//' >> sudoku-sfx2-22050.pcm.tal
+od -t x2 -v sudoku-sfx1-22050.pcm | sed -e 's/.......//' > sudoku-sfx1-22050.pcm.tal
+od -t x2 -v sudoku-sfx2-22050.pcm | sed -e 's/.......//' > sudoku-sfx2-22050.pcm.tal
 
 # rom
 uxnasm sudoku.tal sudoku.rom
