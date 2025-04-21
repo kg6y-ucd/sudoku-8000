@@ -1458,14 +1458,14 @@ RET
 @dialog-goahead-game# $2
 
 @show-dialog ( -- )
- #0010 ;&dialog-x STA2
- #0018 ;&dialog-y STA2
- #0070 ;&dialog-w STA2
- #0028 ;&dialog-h STA2
+ #0046 ;&dialog-x STA2
+ #0025 ;&dialog-y STA2
+ #0064 ;&dialog-w STA2
+ #0029 ;&dialog-h STA2
  #01 [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] [ ;&dialog-w LDA2 ] [ ;&dialog-h LDA2 ] round-rect
  #0f [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #0101 ofs [ ;&dialog-w LDA2 ] [ ;&dialog-h LDA2 ] #fefe ofs round-rect
 
- [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #0808 ofs .Screen/y DEO2 .Screen/x DEO2
+ [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #0a05 ofs .Screen/y DEO2 .Screen/x DEO2
  ;sp_alert1 .Screen/addr DEO2
  #16 .Screen/auto DEO ( 0001:length=2 0 1:AutoAddr 1:AutoX 0:AutoY )
  #0d ( 00001101  ( 0:1bp 0:fg 00:flip_xy 00:bg=alpha 01:fg=black ) )
@@ -1473,7 +1473,7 @@ RET
  .Screen/sprite DEO
  #00 .Screen/auto DEO
 
- ;sp_A [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #1c0c ofs draw-letter 
+ ;sp_A [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #1d0a ofs draw-letter 
  ;sp_r #04 draw-letter-ofs 
  ;sp_e #04 draw-letter-ofs 
  ;sp_y #06 draw-letter-ofs
@@ -1485,7 +1485,7 @@ RET
  ;sp_e #04 draw-letter-ofs
  ;sp_? #04 draw-letter-ofs
 
- ;sp_G [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #0c1c ofs draw-letter
+ ;sp_G [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #0b1c ofs draw-letter
  ;sp_o #04 draw-letter-ofs
  ;sp_A #06 draw-letter-ofs
  ;sp_h #04 draw-letter-ofs
@@ -1493,7 +1493,7 @@ RET
  ;sp_a #04 draw-letter-ofs
  ;sp_d #04 draw-letter-ofs
 
- ;sp_C #16 draw-letter-ofs
+ ;sp_C #17 draw-letter-ofs
  ;sp_a #04 draw-letter-ofs
  ;sp_n #04 draw-letter-ofs
  ;sp_c #04 draw-letter-ofs
@@ -1501,13 +1501,13 @@ RET
  ;sp_l #04 draw-letter-ofs
 
  ;dialog-goahead LDA NOT ?{
-  #01 [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #0d19 ofs #0028 #000b round-rectb
+  #01 [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #0819 ofs #0025 #000b round-rectb
  }
  ;dialog-goahead LDA ?{
-  #01 [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #3619 ofs #0028 #000b round-rectb
+  #01 [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #3619 ofs #0025 #000b round-rectb
  }
- #01 [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #0e1a ofs #0026 #0009 round-rectb
- #01 [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #371a ofs #0026 #0009 round-rectb
+ #01 [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #091a ofs #0023 #0009 round-rectb
+ #01 [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #371a ofs #0023 #0009 round-rectb
  JMP2r
  &dialog-x $2 &dialog-y $2 &dialog-w $2 &dialog-h $2
 
