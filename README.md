@@ -14,3 +14,8 @@ Use the arrow keys to move the cursor and the Z and X keys to increase or decrea
 Information about which Sudoku puzzles have been solved is saved in a 1KB file called "sudoku-8000.mem". To clear the information, delete the "sudoku-8000.mem" file.
 ## Building from Source
 "run.sh" is a build script for Linux. When executed, it generates "sudoku-8000.rom".
+## Notes
+### Sound effects
+We used the export command from TIC-80 to extract a WAV file, which was converted to mono using Audacity and exported in RAW format as unsigned 8-bit PCM at 22050 Hz.
+### Game data generation
+We have programmatically generated 8,000 Sudoku puzzles with unique solutions. Using solutions generated with Alloy as a base, we apply a method that randomly increases the number of blank spaces while maintaining the condition of having a unique solution.
