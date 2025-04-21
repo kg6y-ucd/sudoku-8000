@@ -1,0 +1,1867 @@
+|00 @System &vector $2 &expansion $2 &wst $1 &rst $1 &metadata $2 &r $2 &g $2 &b $2 &debug $1 &state $1
+|10 @Console &vector $2 &read $1 &pad $4 &type $1 &write $1 &error $1
+|20 @Screen  [ &vector $2 &width $2 &height $2 &auto $1 &pad $1 &x $2 &y  $2 &addr $2 &pixel $1 &sprite $1 ]
+|30 @Audio0 &vector $2 &position $2 &output $1 &pad $3 &adsr $2 &length $2 &addr $2 &volume $1 &pitch $1
+|40 @Audio1 &vector $2 &position $2 &output $1 &pad $3 &adsr $2 &length $2 &addr $2 &volume $1 &pitch $1
+|50 @Audio2 &vector $2 &position $2 &output $1 &pad $3 &adsr $2 &length $2 &addr $2 &volume $1 &pitch $1
+|60 @Audio3 &vector $2 &position $2 &output $1 &pad $3 &adsr $2 &length $2 &addr $2 &volume $1 &pitch $1
+|80 @Controller [ &vector $2 &button $1 &key $1 ]
+|90 @Mouse &vector $2 &x $2 &y $2 &state $5 &scrolly &scrolly-hb $1 &scrolly-lb $1
+|a0 @File1 &vector $2 &success $2 &stat $2 &delete $1 &append $1 &name $2 &length $2 &read $2 &write $2
+|b0 @File2 &vector $2 &success $2 &stat $2 &delete $1 &append $1 &name $2 &length $2 &read $2 &write $2
+|c0 @DateTime &year $2 &month $1 &day $1 &hour $1 &minute $1 &second $1 &dotw $1 &doty $2 &isdst $1
+
+%EMIT { #18 DEO }
+%CR { #0a EMIT }
+%SPACE { #20 EMIT }
+%DEPTH { .System/wst DEI #01 SUB } ( not functioning ? )
+%DEPTHr { .System/rst DEI #01 SUB } ( not functioning ? )
+%s { #01 .System/debug DEO }
+%tic++ { ;tic LDA2 INC2 ;tic STA2 }
+%save-mouse-event-tic { ;tic LDA2 ;last-mouse-event-tic STA2 }
+%MOD { DIVk MUL SUB }
+%MOD2 { DIV2k MUL2 SUB2 }
+%/MOD { DIVk STH MOD STHr SWP } ( x y -- x/y x%y )
+%/MOD2 { DIV2k STH2 MOD2 STH2r SWP2 } ( x* y* -- x*/y* x*%y* )
+%to-short { DUP #07 SFT #00 SWP SUB SWP } ( n -- n* )
+%to-ushort { #00 SWP } ( n -- n* )
+%u8-to-u16 { #00 SWP } ( n -- n* )
+%u16-to-u32 { #0000 SWP2 } ( n* -- n** )
+%u32-to-u16 { NIP2 } ( n** -- n* )
+%u16-to-u8 { NIP } ( n* -- n )
+%true { #01 }
+%false { #00 }
+%unless { DUP } ( f -- f f )
+%when { DUP #00 EQU } ( f -- f f )
+%if { DUP #00 EQU } ( f -- f f )
+%else { DUP } ( f -- f f )
+%then { POP } ( f -- )
+%DUP4 { OVR2 OVR2 } ( n** -- n** n** )
+%SWP4 { ROT2 STH2 ROT2 STH2r } ( n** m** -- m** n** )
+%DEC2 { #0001 SUB2 } ( n* -- n* )
+%DEC { #01 SUB } ( n -- n )
+%NOT { #00 EQU } ( f -- f )
+%>r { STH }
+%r> { STHr }
+%r@ { STHrk }
+%RET { JMP2r }
+%DROP { POP }
+%DROP2 { POP2 }
+%DROPr { POPr }
+
+|100
+ #f0fe .System/r DEO2
+ #00de .System/g DEO2
+ #00fe .System/b DEO2
+ #00f0 .Screen/width DEO2
+ #0088 .Screen/height DEO2
+ ;on_draw .Screen/vector DEO2
+ ;on_mouse .Mouse/vector DEO2
+ ;on-button .Controller/vector DEO2
+ rnd-seed
+ read-pmem
+ pmem-pop-count ;solved STA2
+ random-unsolved-game# ;game# STA2
+ init
+ BRK
+
+~math32.tal 
+
+@random-unsolved-game# ( -- n* )
+ #1f40 ;solved LDA2 SUB2 DUP2 #0000 NEQ2 ?{ POP2 #1f3f JMP2r }
+ rnd16 ;&nth STA2
+ #0000 #0000 STH2 ( nth-unsolved | game# )
+ &loop
+ DUP2 [ LIT2 &nth $2 ] GTH2 ?{
+  STH2kr pmem-get ?{ INC2 }
+  INC2r
+  !&loop
+ }
+ POP2
+ STH2r
+ DEC2
+ JMP2r
+
+@init ( -- )
+ ;undo-buffer ;undo-ptr STA2
+ ;undo-buffer ;redo-ptr STA2
+ ( copy game data )
+ ;game# LDA2
+ u16-to-u32 #0000 #0020 mul32 #0001 #0000 divmod32 ( game#*32/10000 game#*32%10000 )
+ ;cmd/src-bank-addr STA2 POP2
+ INC ;cmd/src-bank-no STA2 POP2
+ ;cmd .System/expansion DEO2
+ decomp-board
+ ;game# LDA2 pmem-get NOT ?{
+  ;cell-solution ;cell #0051 memcpy
+ }
+ JMP2r
+
+@board-dirty ( -- f )
+ ;undo-ptr LDA2 ;undo-buffer NEQ2
+ ;game# LDA2 pmem-get NOT
+ AND
+ JMP2r
+
+@game# $2
+@solved $2
+@game-metadata $1
+@cmd [ 01 0020 &src-bank-no $2 &src-bank-addr $2 0000 =decomp-board/buffer ]
+@pmem-file "sudoku-8000.mem 00
+@pmem $400
+
+@fact ( n -- n** )
+ STH ( | n )
+ #0000 #0001 ( r** | n )
+ &loop
+ STHkr ( r** n | n )
+ #02 LTH ?{
+  STHkr
+  to-short #0000 SWP2 ( r** n** | n )
+  mul32 ( rn** | n )
+  STHr ( rn** n )
+  #01 SUB ( rn** n' )
+  STH ( rn** | n' )
+  !&loop
+ }
+ POPr
+ JMP2r
+
+@decompress ( n1* n2* -- )
+ STH2 STH2 ( | n2* n1* )
+ #0000 #01ff ( member** | n2* n1* )
+ STH2r STH2r #0000 #9d80 ( fact8 ) ( member** n1* n2* fact8** )
+ divmod32 ( member** q** r** )
+ STH2 STH2 ( member** q** | r2* r1* )
+ u32-to-u16 u16-to-u8 ( member** q | r2* r1* )
+ STH ( member** | r2* r1* q )
+ DUP4 ( member** member** | r2* r1* q )
+ STHr ( member** member** q | r2* r1* )
+ nth-elem ( member** n | r2* r1* )
+ DUP INC ;&c0 STA
+ reset-bit-32 ( member'** | r2* r1* )
+ STH2r STH2r #0000 #13b0 ( fact7 ) ( member** n1* n2* fact7** )
+ divmod32 ( member** q** r** )
+ STH2 STH2 ( member** q** | r2* r1* )
+ u32-to-u16 u16-to-u8 ( member** q | r2* r1* )
+ STH ( member** | r2* r1* q )
+ DUP4 ( member** member** | r2* r1* q )
+ STHr ( member** member** q | r2* r1* )
+ nth-elem ( member** n | r2* r1* )
+ DUP INC ;&c1 STA
+ reset-bit-32 ( member'** | r2* r1* )
+ STH2r STH2r  #0000 #02d0 ( fact6 ) ( member** n1* n2* fact7** )
+ divmod32 ( member** q** r** )
+ STH2 STH2 ( member** q** | r2* r1* )
+ u32-to-u16 u16-to-u8 ( member** q | r2* r1* )
+ STH ( member** | r2* r1* q )
+ DUP4 ( member** member** | r2* r1* q )
+ STHr ( member** member** q | r2* r1* )
+ nth-elem ( member** n | r2* r1* )
+ DUP INC ;&c2 STA
+ reset-bit-32 ( member'** | r2* r1* )
+ STH2r STH2r #0000 #0078 ( fact5 ) ( member** n1* n2* fact7** )
+ divmod32 ( member** q** r** )
+ STH2 STH2 ( member** q** | r2* r1* )
+ u32-to-u16 u16-to-u8 ( member** q | r2* r1* )
+ STH ( member** | r2* r1* q )
+ DUP4 ( member** member** | r2* r1* q )
+ STHr ( member** member** q | r2* r1* )
+ nth-elem ( member** n | r2* r1* )
+ DUP INC ;&c3 STA
+ reset-bit-32 ( member'** | r2* r1* )
+ STH2r STH2r #0000 #0018 ( fact4 ) ( member** n1* n2* fact7** )
+ divmod32 ( member** q** r** )
+ STH2 STH2 ( member** q** | r2* r1* )
+ u32-to-u16 u16-to-u8 ( member** q | r2* r1* )
+ STH ( member** | r2* r1* q )
+ DUP4 ( member** member** | r2* r1* q )
+ STHr ( member** member** q | r2* r1* )
+ nth-elem ( member** n | r2* r1* )
+ DUP INC ;&c4 STA
+ reset-bit-32 ( member'** | r2* r1* )
+ STH2r STH2r #0000 #0006 ( fact3 ) ( member** n1* n2* fact7** )
+ divmod32 ( member** q** r** )
+ STH2 STH2 ( member** q** | r2* r1* )
+ u32-to-u16 u16-to-u8 ( member** q | r2* r1* )
+ STH ( member** | r2* r1* q )
+ DUP4 ( member** member** | r2* r1* q )
+ STHr ( member** member** q | r2* r1* )
+ nth-elem ( member** n | r2* r1* )
+ DUP INC ;&c5 STA
+ reset-bit-32 ( member'** | r2* r1* )
+ STH2r STH2r #0000 #0002 ( fact2 ) ( member** n1* n2* fact7** )
+ divmod32 ( member** q** r** )
+ STH2 STH2 ( member** q** | r2* r1* )
+ u32-to-u16 u16-to-u8 ( member** q | r2* r1* )
+ STH ( member** | r2* r1* q )
+ DUP4 ( member** member** | r2* r1* q )
+ STHr ( member** member** q | r2* r1* )
+ nth-elem ( member** n | r2* r1* )
+ DUP INC ;&c6 STA
+ reset-bit-32 ( member'** | r2* r1* )
+ STH2r STH2r ( member** n1* n2* )
+ u32-to-u16 u16-to-u8 ( member** r )
+ STH ( member** | r )
+ DUP4 ( member** member** | r )
+ STHr ( member** member** r )
+ nth-elem ( member** n )
+ DUP INC ;&c7 STA
+ reset-bit-32 ( member'** )
+ #00 ( member** 00 | r2* r1* )
+ nth-elem ( n | r2* r1* )
+ INC ;&c8 STA
+ JMP2r
+ &c0 $1 &c1 $1 &c2 $1 &c3 $1 &c4 $1 &c5 $1 &c6 $1 &c7 $1 &c8 $1
+
+@copy-mask ( mask* addr* -- )
+ STH2 ( mask* | addr* )
+ DUP2 #08 get-bit STH2kr STA INC2r
+ DUP2 #07 get-bit STH2kr STA INC2r
+ DUP2 #06 get-bit STH2kr STA INC2r
+ DUP2 #05 get-bit STH2kr STA INC2r
+ DUP2 #04 get-bit STH2kr STA INC2r
+ DUP2 #03 get-bit STH2kr STA INC2r
+ DUP2 #02 get-bit STH2kr STA INC2r
+ DUP2 #01 get-bit STH2kr STA INC2r
+ DUP2 #00 get-bit STH2kr STA INC2r
+ POP2 POP2r
+ JMP2r
+
+@copy-row ( addr* -- )
+ STH2 ( | addr* )
+ ;&col0 LDA2 ;decompress/c0 LDA STHk #01 SUB reset-bit ;&col0 STA2 STHr STH2kr STA INC2r ( | addr* )
+ ;&col1 LDA2 ;decompress/c1 LDA STHk #01 SUB reset-bit ;&col1 STA2 STHr STH2kr STA INC2r ( | addr* )
+ ;&col2 LDA2 ;decompress/c2 LDA STHk #01 SUB reset-bit ;&col2 STA2 STHr STH2kr STA INC2r ( | addr* )
+ ;&col3 LDA2 ;decompress/c3 LDA STHk #01 SUB reset-bit ;&col3 STA2 STHr STH2kr STA INC2r ( | addr* )
+ ;&col4 LDA2 ;decompress/c4 LDA STHk #01 SUB reset-bit ;&col4 STA2 STHr STH2kr STA INC2r ( | addr* )
+ ;&col5 LDA2 ;decompress/c5 LDA STHk #01 SUB reset-bit ;&col5 STA2 STHr STH2kr STA INC2r ( | addr* )
+ ;&col6 LDA2 ;decompress/c6 LDA STHk #01 SUB reset-bit ;&col6 STA2 STHr STH2kr STA INC2r ( | addr* )
+ ;&col7 LDA2 ;decompress/c7 LDA STHk #01 SUB reset-bit ;&col7 STA2 STHr STH2kr STA INC2r ( | addr* )
+ ;&col8 LDA2 ;decompress/c8 LDA STHk #01 SUB reset-bit ;&col8 STA2 STHr STH2kr STA INC2r ( | addr* )
+ POP2r
+ JMP2r
+ &col0 $2 &col1 $2 &col2 $2 &col3 $2 &col4 $2 &col5 $2 &col6 $2 &col7 $2 &col8 $2
+
+@decomp-board ( -- )
+ ( initialize row9 set )
+ #01ff ;copy-row/col0 STA2
+ #01ff ;copy-row/col1 STA2
+ #01ff ;copy-row/col2 STA2
+ #01ff ;copy-row/col3 STA2
+ #01ff ;copy-row/col4 STA2
+ #01ff ;copy-row/col5 STA2
+ #01ff ;copy-row/col6 STA2
+ #01ff ;copy-row/col7 STA2
+ #01ff ;copy-row/col8 STA2
+
+ ( solution )
+ ;&buffer LDA2 ;&buffer #0002 ADD2 LDA2 #0b rshift32
+ decompress ;cell-solution copy-row
+ ;&buffer #0004 ADD2 LDA2 ;&buffer #0006 ADD2 LDA2 #0b rshift32
+ decompress ;cell-solution #0009 ADD2 copy-row
+ ;&buffer #0008 ADD2 LDA2 ;&buffer #000a ADD2 LDA2 #0b rshift32
+ decompress ;cell-solution #0012 ADD2 copy-row
+ ;&buffer #000c ADD2 LDA2 ;&buffer #000e ADD2 LDA2 #0b rshift32
+ decompress ;cell-solution #001b ADD2 copy-row
+ ;&buffer #0010 ADD2 LDA2 ;&buffer #0012 ADD2 LDA2 #0b rshift32
+ decompress ;cell-solution #0024 ADD2 copy-row
+ ;&buffer #0014 ADD2 LDA2 ;&buffer #0016 ADD2 LDA2 #0b rshift32
+ decompress ;cell-solution #002d ADD2 copy-row
+ ;&buffer #0018 ADD2 LDA2 ;&buffer #001a ADD2 LDA2 #0b rshift32
+ decompress ;cell-solution #0036 ADD2 copy-row
+ ;&buffer #001c ADD2 LDA2 ;&buffer #001e ADD2 LDA2 #0b rshift32
+ decompress ;cell-solution #003f ADD2 copy-row
+
+ ( mask )
+ ;&buffer #0002 ADD2 LDA2 #07ff AND2 #02 SFT2 ;fixed-cell copy-mask
+ ;&buffer #0006 ADD2 LDA2 #07ff AND2 #02 SFT2 ;fixed-cell #0009 ADD2 copy-mask
+ ;&buffer #000a ADD2 LDA2 #07ff AND2 #02 SFT2 ;fixed-cell #0012 ADD2 copy-mask
+ ;&buffer #000e ADD2 LDA2 #07ff AND2 #02 SFT2 ;fixed-cell #001b ADD2 copy-mask
+ ;&buffer #0012 ADD2 LDA2 #07ff AND2 #02 SFT2 ;fixed-cell #0024 ADD2 copy-mask
+ ;&buffer #0016 ADD2 LDA2 #07ff AND2 #02 SFT2 ;fixed-cell #002d ADD2 copy-mask
+ ;&buffer #001a ADD2 LDA2 #07ff AND2 #02 SFT2 ;fixed-cell #0036 ADD2 copy-mask
+ ;&buffer #001e ADD2 LDA2 #07ff AND2 #02 SFT2 ;fixed-cell #003f ADD2 copy-mask
+
+ ( mask9 )
+ #0000 STH2 ( | mask9 )
+ ;&buffer #0002 ADD2 LDA2 #0001 AND2 #80 SFT2 STH2 ORA2r
+ ;&buffer #0006 ADD2 LDA2 #0001 AND2 #70 SFT2 STH2 ORA2r
+ ;&buffer #000a ADD2 LDA2 #0001 AND2 #60 SFT2 STH2 ORA2r
+ ;&buffer #000e ADD2 LDA2 #0001 AND2 #50 SFT2 STH2 ORA2r
+ ;&buffer #0012 ADD2 LDA2 #0001 AND2 #40 SFT2 STH2 ORA2r
+ ;&buffer #0016 ADD2 LDA2 #0001 AND2 #30 SFT2 STH2 ORA2r
+ ;&buffer #001a ADD2 LDA2 #0001 AND2 #20 SFT2 STH2 ORA2r
+ ;&buffer #001e ADD2 LDA2 #0003 AND2 #00 SFT2 STH2 ORA2r
+ STH2r ;fixed-cell #0048 ADD2 copy-mask
+
+ ( game metadata )
+ #00 STH ( | metadata )
+ ;&buffer #0002 ADD2 LDA2 #01 SFT2 #0001 AND2 #60 SFT2 u16-to-u8 STH ORAr
+ ;&buffer #0006 ADD2 LDA2 #01 SFT2 #0001 AND2 #50 SFT2 u16-to-u8 STH ORAr
+ ;&buffer #000a ADD2 LDA2 #01 SFT2 #0001 AND2 #40 SFT2 u16-to-u8 STH ORAr
+ ;&buffer #000e ADD2 LDA2 #01 SFT2 #0001 AND2 #30 SFT2 u16-to-u8 STH ORAr
+ ;&buffer #0012 ADD2 LDA2 #01 SFT2 #0001 AND2 #20 SFT2 u16-to-u8 STH ORAr
+ ;&buffer #0016 ADD2 LDA2 #01 SFT2 #0001 AND2 #10 SFT2 u16-to-u8 STH ORAr
+ ;&buffer #001a ADD2 LDA2 #01 SFT2 #0001 AND2 #00 SFT2 u16-to-u8 STH ORAr
+ STHr ( CR DUP print-byte-decimal CR )
+ ;game-metadata STA
+ 
+ ( row9 )
+ #0000 ;copy-row/col0 LDA2 #00 nth-elem INC ;cell-solution #0048 ADD2 STA
+ #0000 ;copy-row/col1 LDA2 #00 nth-elem INC ;cell-solution #0049 ADD2 STA
+ #0000 ;copy-row/col2 LDA2 #00 nth-elem INC ;cell-solution #004a ADD2 STA
+ #0000 ;copy-row/col3 LDA2 #00 nth-elem INC ;cell-solution #004b ADD2 STA
+ #0000 ;copy-row/col4 LDA2 #00 nth-elem INC ;cell-solution #004c ADD2 STA
+ #0000 ;copy-row/col5 LDA2 #00 nth-elem INC ;cell-solution #004d ADD2 STA
+ #0000 ;copy-row/col6 LDA2 #00 nth-elem INC ;cell-solution #004e ADD2 STA
+ #0000 ;copy-row/col7 LDA2 #00 nth-elem INC ;cell-solution #004f ADD2 STA
+ #0000 ;copy-row/col8 LDA2 #00 nth-elem INC ;cell-solution #0050 ADD2 STA
+
+ ( cell-solution -> cell )
+ #00
+ &loop
+ DUP #51 EQU ?{
+   DUP to-ushort ;cell-solution ADD2 LDA STH ( c | x )
+   DUP to-ushort ;fixed-cell ADD2 LDA ?{ POPr #00 STH } ( c f | x )
+   ( LIT ", EMIT STHkr print-byte-hex )
+   DUP to-ushort ;cell ADD2 STHr ROT ROT STA ( c )
+   INC ( c++ )
+   !&loop
+ }
+
+ POP
+ JMP2r
+ &buffer $20
+
+@read-pmem
+ ;pmem-file .File1/name DEO2
+ #0400 .File1/length DEO2
+ ;pmem .File1/read DEO2
+ JMP2r
+
+@write-pmem
+ ;pmem-file .File1/name DEO2
+ #0400 .File1/length DEO2
+ ;pmem .File1/write DEO2
+ JMP2r
+
+@pmem-dump
+ ;separator print-string
+ ;pmem
+ &loop
+ DUP2 ;pmem SUB2 #0010 MOD2 #0000 NEQ2 ?{ CR }
+ SPACE DUP2 LDA2 print-short-hex
+ INC2 INC2
+ DUP2 ;pmem #0400 ADD2 NEQ2 ?&loop
+ POP2
+ CR
+ JMP2r
+
+@pmem-pop-count ( -- n* )
+ #0000 STH2 ( | 0000 )
+ ;pmem ( pmem* | 0000 )
+ &loop
+ DUP2 LDA2 pop-count to-short STH2 ADD2r
+ INC2 INC2
+ DUP2 ;pmem #03e8 ADD2 NEQ2 ?&loop
+ POP2
+ STH2r
+ JMP2r
+
+@pmem-set ( 0000-03ff* -- )
+ #0008 /MOD2 ( addr-offset* bit-pos* )
+ SWP POP #40 SFT ( addr-offset* bit-pos-sft )
+ #01 SWP SFT ( addr-offset* bit-mask )
+ ROT ROT ;pmem ADD2
+ DUP2 LDA ( bit-mask addr* current-bits )
+ STH ROT STHr ORA ( addr* new-bits )
+ ROT ROT ( new-bits addr* )
+ STA
+ JMP2r
+
+@pmem-get ( 0000-03ff* -- f )
+ #0008 /MOD2 ( addr-offset* bit-pos* )
+ SWP POP #40 SFT ( addr-offset* bit-pos-sft )
+ #01 SWP SFT ( addr-offset* bit-mask )
+ ROT ROT ;pmem ADD2 ( bit-mask addr* )
+ LDA ( bit-mask current-bits )
+ AND #00 NEQ
+ JMP2r
+
+@digits-to-short ( n100 n100 n10 n1 -- n* )
+ to-ushort STH2
+ to-ushort #000a MUL2 STH2
+ to-ushort #0064 MUL2 STH2
+ to-ushort #03e8 MUL2
+ STH2r ADD2
+ STH2r ADD2
+ STH2r ADD2
+ JMP2r
+ 
+@digits ( n* -- )
+ #03e8 DIV2k DUP
+  #0a DIVk DUP ,&d5 STR MUL SUB
+               ,&d4 STR
+ MUL2 SUB2
+ #0064 DIV2k DUP
+               ,&d3 STR
+ MUL2 SUB2
+ NIP
+  #0a DIVk DUP ,&d2 STR MUL SUB
+               ,&d1 STR
+ JMP2r
+ &d5 $1 &d4 $1 &d3 $1 &d2 $1 &d1 $1
+
+@print-short-decimal ( short* -- )
+	#03e8 DIV2k
+		DUP ,print-byte-decimal/second JSR
+		MUL2 SUB2
+	#0064 DIV2k
+		DUP ,print-byte-decimal/third JSR
+		MUL2 SUB2
+	NIP ,print-byte-decimal/second JMP
+
+@print-byte-decimal ( byte -- )
+	#64 DIVk DUP #30 ADD .Console/write DEO MUL SUB
+	&second
+	#0a DIVk DUP #30 ADD .Console/write DEO MUL SUB
+	&third
+	             #30 ADD .Console/write DEO
+	JMP2r
+
+@print-short-hex ( short* -- )
+	SWP ,print-byte-hex JSR
+	( fall through )
+
+@print-byte-hex ( byte -- )
+	DUP #04 SFT ,print-nibble-hex JSR
+	#0f AND ( fall through )
+
+@print-nibble-hex ( nibble -- )
+	#30 ADD DUP #39 GTH #07 MUL ADD .Console/write DEO
+	JMP2r
+
+@print-string ( string* -- )
+	LDAk ,&not-end JCN
+	POP2 JMP2r
+	&not-end
+	LDAk .Console/write DEO
+	INC2
+	,print-string JMP
+
+@on-button ( -> )
+ ;dialog LDA ?{
+  .Controller/button DEI #10 ( up    ) NEQ ;draw-bg/focus-row LDA #00 EQU ORA ?{ ;draw-bg/focus-row LDA #01 SUB ;draw-bg/focus-row STA }
+  .Controller/button DEI #20 ( down  ) NEQ ;draw-bg/focus-row LDA #08 EQU ORA ?{ ;draw-bg/focus-row LDA INC ;draw-bg/focus-row STA }
+  .Controller/button DEI #40 ( left  ) NEQ ;draw-bg/focus-col LDA #00 EQU ORA ?{ ;draw-bg/focus-col LDA #01 SUB ;draw-bg/focus-col STA }
+  .Controller/button DEI #80 ( right ) NEQ ;draw-bg/focus-col LDA #0c EQU ORA ?{ ;draw-bg/focus-col LDA INC ;draw-bg/focus-col STA }
+  .Controller/key DEI LIT "z NEQ ;draw-bg/focus-col LDA #08 GTH ORA ?{ ;draw-bg/focus-row LDA ;draw-bg/focus-col LDA inc-cell }
+  .Controller/key DEI LIT "x NEQ ;draw-bg/focus-col LDA #08 GTH ORA ?{ ;draw-bg/focus-row LDA ;draw-bg/focus-col LDA dec-cell }
+  .Controller/key DEI LIT "z NEQ ;draw-bg/focus-col LDA #09 LTH ORA ?{
+   ;draw-bg/focus-col LDA
+   ;game# LDA2 digits
+   DUP #09 NEQ ?{ ;digits/d4 LDA INC DUP #08 NEQ ?{ POP #00 } ;digits/d4 STA }
+   DUP #0a NEQ ?{ ;digits/d3 LDA INC DUP #0a NEQ ?{ POP #00 } ;digits/d3 STA }
+   DUP #0b NEQ ?{ ;digits/d2 LDA INC DUP #0a NEQ ?{ POP #00 } ;digits/d2 STA }
+   DUP #0c NEQ ?{ ;digits/d1 LDA INC DUP #0a NEQ ?{ POP #00 } ;digits/d1 STA }
+   POP
+   ;digits/d4 LDA ;digits/d3 LDA ;digits/d2 LDA ;digits/d1 LDA digits-to-short
+   board-dirty ?{
+    ;game# STA2
+    init
+   }
+   board-dirty NOT ?{
+    ;dialog-goahead-game# STA2
+    true ;dialog STA
+    false ;dialog-goahead STA ( reset to cancel )
+   }
+  }
+  .Controller/key DEI LIT "x NEQ ;draw-bg/focus-col LDA #09 LTH ORA ?{
+   ;draw-bg/focus-col LDA
+   ;game# LDA2 digits
+   DUP #09 NEQ ?{ ;digits/d4 LDA DEC DUP #ff NEQ ?{ POP #07 } ;digits/d4 STA }
+   DUP #0a NEQ ?{ ;digits/d3 LDA DEC DUP #ff NEQ ?{ POP #09 } ;digits/d3 STA }
+   DUP #0b NEQ ?{ ;digits/d2 LDA DEC DUP #ff NEQ ?{ POP #09 } ;digits/d2 STA }
+   DUP #0c NEQ ?{ ;digits/d1 LDA DEC DUP #ff NEQ ?{ POP #09 } ;digits/d1 STA }
+   POP
+   ;digits/d4 LDA ;digits/d3 LDA ;digits/d2 LDA ;digits/d1 LDA digits-to-short
+   board-dirty ?{
+    ;game# STA2
+    init
+   }
+   board-dirty NOT ?{
+    ;dialog-goahead-game# STA2
+    true ;dialog STA
+    false ;dialog-goahead STA ( reset to cancel )
+   }
+  }
+  .Controller/key DEI LIT "a NEQ ?{ undo }
+  .Controller/key DEI LIT "s NEQ ?{ redo }
+  check-finish
+  BRK
+ }
+ ;dialog LDA NOT ?{
+  .Controller/button DEI #40 ( left  ) NEQ ?{ true ;dialog-goahead STA }
+  .Controller/button DEI #80 ( right ) NEQ ?{ false ;dialog-goahead STA }
+  .Controller/key DEI LIT "z NEQ .Controller/key DEI LIT "x NEQ AND ?{
+   ;dialog-goahead LDA NOT ?{
+    ;dialog-goahead-game# LDA2 ;game# STA2
+    init
+   }
+   false ;dialog STA
+  }
+ }
+ BRK
+
+@undo
+ ;undo-ptr LDA2 ;undo-buffer NEQ2 ?{ JMP2r }
+ sfx2
+ ;undo-ptr dec-ptr
+ ;undo-ptr LDA2 LDA2 ( rcnn'* )
+ #04 SFT ( rc old-n )
+ SWP DUP ( old-n rc rc )
+ #0f AND ( old-n rc c )
+ SWP #04 SFT SWP ( old-n r c )
+ DUP2 ;draw-bg/focus-col STA ;draw-bg/focus-row STA
+ rc-to-cell-idx ( old-n idx )
+ to-short ;cell ADD2 ( old-n addr* )
+ STA
+ JMP2r
+ 
+@redo
+ ;redo-ptr LDA2 ;undo-ptr LDA2 NEQ2 ?{ JMP2r }
+ sfx2
+ ;undo-ptr LDA2 LDA2 ( rcnn'* )
+ ;undo-ptr inc-ptr
+ #0f AND ( rc n' )
+ SWP DUP ( n' rc rc )
+ #0f AND ( n' rc c )
+ SWP ( n' c rc )
+ #04 SFT ( n' c r )
+ SWP ( n' r c )
+ DUP2 ;draw-bg/focus-col STA ;draw-bg/focus-row STA
+ rc-to-cell-idx ( n' idx )
+ to-short ;cell ADD2 ( n' addr* )
+ STA
+ JMP2r
+
+@undo-ptr =undo-buffer
+@redo-ptr =undo-buffer
+@undo-buffer $400 ( 512 entries )
+@undo-buffer-sentinel
+
+@memcpy ( src* dst* n* -- ) ( src* > dst* )
+ ROT2 ( dst* n* src* )
+ DUP2 ( dst* n* src* src* )
+ ROT2 ( dst* src* src* n* )
+ ADD2 ( dst* src* sentinel* )
+ ;&src-sentinel STA2 ( dst* src* )
+ &loop
+ DUP2 [ LIT2 &src-sentinel $2 ] EQU2 ?{ ( dst* src* )
+  DUP2 LDA ( dst* src* v )
+  STH ( dst* src* | v )
+  SWP2 ( src* dst* | v )
+  DUP2 ( src* dst* dst* | v )
+  STHr ( src* dst* dup* v )
+  ROT ROT ( src* dst* v dst* )
+  STA ( src* dst* )
+  INC2 ( src* dst*++ )
+  SWP2 ( dst* src* )
+  INC2 ( dst* stc*++ )
+  !&loop
+ }
+ POP2 POP2
+ JMP2r
+
+(
+ It seems that the case of operation==02(cpyr) is not implemented in the current uxnemu. I think that is why the memcpy below does not function.
+
+@memcpy ( src* dst* n* -- ) ( src* > dst* )
+ ;&length STA2
+ DUP4 EQU2 NOT ?{ LIT "= EMIT CR POP2 POP2 JMP2r }
+ DUP4 GTH2 NOT ?{ LIT "> EMIT CR #01 ;&operation STA }
+ DUP4 LTH2 NOT ?{ LIT "< EMIT CR #02 ;&operation STA }
+ ;&dst STA2
+ ;&src STA2
+ ;&cmd .System/expansion DEO2
+ JMP2r
+ &cmd [ &operation 01 &length 0020 &src-bank 0000 &src $2 &dst-bank 0000 &dst $2 ]
+)
+
+@dump-undo-buffer ( -- )
+ ;separator print-string
+ ;undo-buffer
+ &loop
+ DUP2 LIT "_ EMIT LDA2 print-short-hex
+ DUP2 ;undo-ptr LDA2 NEQ2 ?{ LIT "< EMIT }
+ DUP2 ;undo-buffer-sentinel NEQ2 ?{ LIT "- EMIT }
+ CR
+ INC2 INC2
+ DUP2 ;undo-buffer #0018 ADD2 NEQ2 ?&loop
+ POP2
+ JMP2r
+
+@cell-solution
+ 02 06 01 04 09 03 05 07 08
+ 04 03 09 08 07 05 06 01 02
+ 08 07 05 02 01 06 03 09 04
+ 07 02 03 09 05 01 08 04 06
+ 01 04 06 07 03 08 09 02 05
+ 05 09 08 06 02 04 01 03 07
+ 09 08 04 01 06 02 07 05 03
+ 03 01 02 05 08 07 04 06 09
+ 06 05 07 03 04 09 02 08 01
+@fixed-cell
+ 00 00 00 01 01 00 01 01 01
+ 00 00 01 00 00 00 00 00 02
+ 01 01 01 00 00 01 00 01 00
+ 00 00 01 01 00 00 00 00 01
+ 01 00 00 00 00 01 01 01 00
+ 00 00 01 00 00 01 00 00 00
+ 01 00 01 00 01 00 00 01 00
+ 00 00 00 01 00 00 01 00 00
+ 01 00 00 00 00 01 01 00 01
+@cell
+ 00 00 00 04 09 00 05 07 08
+ 00 00 09 00 00 00 00 00 02
+ 08 07 05 00 00 06 00 09 00
+ 00 00 03 09 00 00 00 00 06
+ 01 00 00 00 09 08 09 02 00
+ 00 00 08 00 00 04 00 00 00
+ 09 00 04 00 06 00 00 05 00
+ 00 00 00 05 00 00 04 00 00
+ 06 00 00 00 00 09 02 00 01
+@grp
+ ( horizontal )
+ 00 01 02 03 04 05 06 07 08
+ 09 0a 0b 0c 0d 0e 0f 10 11
+ 12 13 14 15 16 17 18 19 1a
+ 1b 1c 1d 1e 1f 20 21 22 23
+ 24 25 26 27 28 29 2a 2b 2c
+ 2d 2e 2f 30 31 32 33 34 35
+ 36 37 38 39 3a 3b 3c 3d 3e
+ 3f 40 41 42 43 44 45 46 47
+ 48 49 4a 4b 4c 4d 4e 4f 50
+ ( vertical )
+ 00 09 12 1b 24 2d 36 3f 48
+ 01 0a 13 1c 25 2e 37 40 49
+ 02 0b 14 1d 26 2f 38 41 4a
+ 03 0c 15 1e 27 30 39 42 4b
+ 04 0d 16 1f 28 31 3a 43 4c
+ 05 0e 17 20 29 32 3b 44 4d
+ 06 0f 18 21 2a 33 3c 45 4e
+ 07 10 19 22 2b 34 3d 46 4f
+ 08 11 1a 23 2c 35 3e 47 50
+ ( box )
+ 00 01 02 09 0a 0b 12 13 14
+ 03 04 05 0c 0d 0e 15 16 17
+ 06 07 08 0f 10 11 18 19 1a
+ 1b 1c 1d 24 25 26 2d 2e 2f
+ 1e 1f 20 27 28 29 30 31 32
+ 21 22 23 2a 2b 2c 33 34 35
+ 36 37 38 3f 40 41 48 49 4a
+ 39 3a 3b 42 43 44 4b 4c 4d
+ 3c 3d 3e 45 46 47 4e 4f 50
+
+@tic 0000
+@last-mouse-event-tic 0000
+
+@timeout-since-last-mouse-event ( -- f )
+ ,tic LDR2 ,last-mouse-event-tic LDR2 SUB2 #0010 GTH2
+ JMP2r
+
+@pop-count ( n* -- n )
+ #00 STH
+ &loop
+  DUP2 #0000 EQU2 ?&break
+  DUP2 #0001 SUB2 AND2
+  INCr
+  !&loop
+ &break
+ POP2
+ STHr
+ JMP2r
+
+@set-bit ( n* nth ( 0 base ) -- n* )
+ #40 SFT #0001 ROT SFT2 ORA2
+ JMP2r
+
+@reset-bit ( n* nth ( 0 base ) -- n* )
+ #40 SFT #0001 ROT SFT2 #ffff EOR2 AND2
+ JMP2r
+
+@get-bit ( n* nth ( 0 base ) -- f )
+ #40 SFT #0001 ROT SFT2 AND2 #0000 NEQ2
+ JMP2r
+
+@set-bit-32 ( n** nth ( 0 base ) -- n** )
+ DUP #10 LTH ?&low-16
+ #10 SUB ROT ROT STH2 set-bit STH2r JMP2r
+ &low-16
+ set-bit
+ JMP2r
+
+@reset-bit-32 ( n** nth ( 0 base ) -- n** )
+ DUP #10 LTH ?&low-16
+ #10 SUB ROT ROT STH2 reset-bit STH2r JMP2r
+ &low-16
+ reset-bit
+ JMP2r
+
+@get-bit-32 ( n** nth ( 0 base ) -- f )
+ DUP #10 LTH ?&low-16
+ #10 SUB ROT ROT POP2 get-bit JMP2r
+ &low-16
+ get-bit
+ ROT ROT POP2
+ JMP2r
+
+@nth-elem ( n** nth ( 0 base ) -- 0-31 or ff )
+ STH ( n** | n )
+ #00 ( n** i | n )
+ &loop
+  DUP #20 EQU  ( n** i f | n )
+  ?&break
+  ( n** i | n )
+  STH OVR2 OVR2 STHr DUP STH ( n** n** i | n i )
+  get-bit-32 ( n** f | n i )
+  ?&l1
+  STHr INC ( n** i++ | n )
+  !&loop
+  &l1 ( n** | n i )
+  STHr STHkr ( n** i n | n )
+  ?&l2
+   ( n==0 )
+   ( n** i | n )
+   POPr STH ( n** | i )
+   POP2 POP2 ( | i )
+   STHr ( i )
+   JMP2r
+  &l2 ( n** i | n )
+  LITr 01 SUBr INC !&loop
+  &break ( n** #20 | n )
+  POP
+  POP2 POP2
+  POPr
+  #ff JMP2r
+
+@rc-to-cell-idx ( r c -- i )
+ #09 ROT MUL ADD JMP2r
+
+@cell-idx-to-rc ( i -- r c )
+ #09 /MOD JMP2r
+
+@cell-idx-to-grps ( i -- n** )
+ STHk ( i | i )
+ cell-idx-to-rc ( r c | i )
+ STH STH #0000 #0000 ( 0000 0000 | i c r )
+ STHr ( 0000 0000 r | i c )
+ set-bit-32 ( xxxx xxxx | i c )
+ STHr #09 ADD ( xxxx xxxx c+9 | i )
+ set-bit-32 ( yyyy yyyy | i )
+ STHr ( zzzz zzzz i )
+ cell-idx-to-rc ( zzzz zzzz r c )
+ SWP ( zzzz zzzz c r )
+ #03 DIV #03 MUL ( zzzz zzzz c r/3*3 )
+ SWP ( zzzz zzzz r/3*3 c )
+ #03 DIV ( zzzz zzzz r/3*3 c/3 )
+ ADD ( zzzz zzzz r/3*3+c/3 )
+ #12 ADD ( zzzz zzzz r/3*3+c/3+18 )
+ set-bit-32 ( wwww wwww )
+ JMP2r
+ 
+@rc-in-grp ( grp_idx r c -- f )
+ rc-to-cell-idx STH ( grp_idx | idx )
+ #09 MUL to-ushort ;grp ADD2 ( grp_addr* | idx )
+ STH2k #0009 ADD2 ( sentinel* | idx grp_addr* )
+ &loop
+ STH2kr ( sentinel* grp_addr* | idx grp_addr* )
+ LDA ( sentinel* grp_cell_idx | idx grp_addr* )
+ ROTr
+ STHkr
+ NEQ ?&l1 ( sentinel* | grp_addr* idx )
+ POP2r POPr POP2 #01 JMP2r
+ &l1 ( sentinel* | grp_addr* idx )
+ ROTr ROTr INC2r ( sentinel* | idx grp_addr++* )
+ DUP2 ( sentinel* sentinel* | idx grp_addr* )
+ STH2kr ( sentinel* sentinel* grp_addr* | idx grp_addr* )
+ EQU2 ?&l2 ( sentinel* | idx grp_addr* )
+ !&loop
+ &l2
+ POP2 POPr POP2r #00 JMP2r
+
+@board-filled ( -- f )
+ #51
+ #00
+ &loop
+ DUP to-ushort ;cell ADD2 LDA ( 51 c n )
+ ?{ ( n==zero ) POP POP false JMP2r }
+ INC GTHk ?&loop
+ POP POP
+ true
+ JMP2r
+
+@check-groups-uniq ( -- n** )
+ #0000 #0000
+ #00 STH ( n** | i )
+ &loop
+ STHkr ( n** i | i )
+ check-group-uniq ( n** f | i )
+ NOT ?&l1 ( n** | i )
+ STHkr ( n** i | i )
+ set-bit-32 ( n** | i )
+ &l1
+ INCr STHkr #1b NEQ ( n** f | i++ )
+ ?&loop
+ POPr
+ JMP2r
+
+@check-group-uniq ( grp_idx -- f )
+ #0000 ;&set STA2
+ #09 MUL to-ushort ;grp ADD2 STH2k ( grp_addr* | grp_addr* )
+ #0000 ( grp_addr* i* | grp_addr* )
+ &loop
+ DUP2 ROT2 ADD2 LDA to-ushort ;cell ADD2 LDA ( i* cell_val0 | grp_addr* )
+ STHk NOT ?&l1 ( i* | grp_addr* cell_val0 )
+ ;&set LDA2 STHkr ( i* set* cell_val0 | grp_addr* cell_val0 )
+ get-bit NOT ?&l1 ( i* | grp_addr* cell_val0 )
+ POP2 POPr POP2r #01 JMP2r
+ &l1 ( i* | grp_addr* cell_val0 )
+ ;&set LDA2 STHr ( i* set* cell_val0 | grp_addr* )
+ set-bit ;&set STA2 ( i* | grp_addr* )
+ INC2 STH2kr SWP2 ( grp_addr++* i++* | grp_addr* )
+ DUP2 #0009 NEQ2 ?&loop
+ POP2 POP2 POP2r #00 JMP2r
+ &set 00 00
+
+@mouse-rc ( -- r c )
+  .Mouse/x DEI2 ( DUP2 print-short-decimal )
+  .Mouse/y DEI2 ( DUP2 print-short-decimal )
+ [ ;rc-xy/board-y LDA2 SUB2 ] #000e DIV2 SWP2 [ ;rc-xy/board-x LDA2 SUB2 ] #000e DIV2 ( ( y-4 ) /14 ( x-8 ) /14 )
+ SWP POP ROT POP ( row col )
+ JMP2r
+
+@inc-cell ( r c -- )
+ STH2k ( r c | r c )
+ rc-to-cell-idx DUP ( idx idx | r c )
+ to-ushort ;cell ADD2 ( idx addr* | r c )
+ ROT to-ushort ;fixed-cell ADD2 ( addr* addr-fixed* | r c )
+ LDA NOT ?{ POP2 POP2r JMP2r } ( addr* | r c )
+ DUP2 ( addr* addr* | r c )
+ LDA ( addr* n | r c )
+ STHk ( addr* n | r c n )
+ INC ( addr* n+1 | r c n )
+ DUP #0a NEQ ?{ POP #00 }
+ STHk ( addr* new-n | r c n new-n )
+ ROT ROT STA ( | r c n new-n )
+ STH2r STH2r SWP2 save-undo-data
+ JMP2r
+
+@dec-cell ( r c -- )
+ STH2k ( r c | r c )
+ rc-to-cell-idx DUP ( idx idx | r c )
+ to-ushort ;cell ADD2 ( idx addr* | r c )
+ ROT to-ushort ;fixed-cell ADD2 ( addr* addr-fixed* | r c )
+ LDA NOT ?{ POP2 JMP2r } ( addr* | r c )
+ DUP2 ( addr* addr* | r c )
+ LDA ( addr* n | r c )
+ STHk ( addr* n | r c n )
+ #01 SUB ( addr* n-1 | r c n )
+ DUP #ff NEQ ?{ POP #09 }
+ STHk ( addr* new-n | r c n new-n )
+ ROT ROT STA ( | r c n new-n )
+ STH2r STH2r SWP2 save-undo-data
+ JMP2r
+
+@save-undo-data ( r c old-n new-n )
+ SWP #40 SFT ORA ROT ROT SWP #40 SFT ORA SWP ( rcnn'* )
+
+ ( ----- empty undo buffer ? ----- )
+ ;undo-ptr LDA2 ;undo-buffer EQU2 if ?{ ( rcnn'* f )
+   #02 pick #02 pick ( rcnn'* f rcnn'* )
+   ;undo-ptr LDA2 STA2 ( rcnn'* f )
+   ;undo-ptr inc-ptr ( rcnn'* f )
+   ;undo-ptr LDA2 ;redo-ptr STA2
+   POP POP2 JMP2r
+ }
+ then ( rcnn'* )
+ 
+ ( ----- top entry rc != rc ----- )
+ ;undo-ptr LDA2 #0002 SUB2 ( <-- top entry addr ) LDA2 ( rcnn'* top-rcnn'* )
+ #03 pick ( rcnn'* top-rcnn'* rc )
+ #02 pick ( rcnn'* top-rcnn'* rc top-rc )
+ NEQ if ?{ ( rcnn'* top-rcnn'* f )
+   #04 pick #04 pick ( rcnn'* top-rcnn'* f rcnn'* )
+   ;undo-ptr LDA2 STA2 ( rcnn'* top-rcnn'* f )
+   ;undo-ptr inc-ptr ( rcnn'* top-rcnn'* f )
+
+   ;undo-ptr LDA2 ;undo-buffer-sentinel NEQ2 ?{
+    ;undo-buffer #0002 ADD2 ( <-- src addr )
+    ;undo-buffer ( <-- dst addr )
+    ;undo-buffer-sentinel ;undo-buffer SUB2 #0002 SUB2 ( <-- ( max-1 ) entry bytes )
+    dump-undo-buffer s
+    memcpy
+    ;undo-ptr dec-ptr
+    dump-undo-buffer
+   }
+
+   ;undo-ptr LDA2 ;redo-ptr STA2
+   POP POP2 POP2
+   JMP2r
+ } then ( rcnn'* top-rcnn'* )
+ 
+ ( ----- top entry rc == rc && n' == top-n ----- )
+ #00 pick ( rcnn'* top-rcnn'* top-nn' )
+ #04 SFT ( rcnn'* top-rcnn'* top-n )
+ #03 pick ( rcnn'* top-rcnn'* top-n nn' )
+ #0f AND ( rcnn'* top-rcnn'* top-n n' )
+ EQU if ?{ ( rcnn'* top-rcnn'* f )
+   ;undo-ptr dec-ptr ( rcnn'* top-rcnn'* f )
+   POP POP2 POP2
+   JMP2r
+ } then ( rcnn'* top-rcnn'* )
+
+ ( ----- top entry rc == rc && n' != top-n ----- )
+ #00 pick ( rcnn'* top-rcnn'* top-nn' )
+ #f0 AND ( rcnn'* top-rcnn'* top-n )
+ #03 pick ( rcnn'* top-rcnn'* top-n nn' )
+ #0f AND ( rcnn'* top-rcnn'* top-n n' )
+ ORA ( rcnn'* top-rcnn'* updated-nn' )
+ #02 pick ( rcnn'* top-rcnn'* updated-nn' top-rc )
+ SWP ( rcnn'* top-rcnn'* top-rc updated-nn' )
+
+ ;undo-ptr LDA2 #0002 SUB2 ( <-- top entry addr ) STA2 ( rcnn'* top-rcnn'* )
+ POP2 POP2
+ JMP2r
+
+@inc-ptr ( ptr-addr -- )
+ STH2k LDA2 INC2 INC2 STH2r STA2 JMP2r
+
+@dec-ptr ( ptr-addr -- )
+ STH2k LDA2 #0002 SUB2 STH2r STA2 JMP2r
+
+@mouse-game-selector ( -- 09..0c or 00 )
+ .Mouse/y DEI2 #0015 GTH2 .Mouse/y DEI2 #001d LTH2 AND ?{ #00 JMP2r }
+ .Mouse/x DEI2 #00b3 GTH2 .Mouse/x DEI2 #00ba LTH2 AND NOT ?{ #09 JMP2r }
+ .Mouse/x DEI2 #00bb GTH2 .Mouse/x DEI2 #00c2 LTH2 AND NOT ?{ #0a JMP2r }
+ .Mouse/x DEI2 #00c3 GTH2 .Mouse/x DEI2 #00ca LTH2 AND NOT ?{ #0b JMP2r }
+ .Mouse/x DEI2 #00cb GTH2 .Mouse/x DEI2 #00d2 LTH2 AND NOT ?{ #0c JMP2r }
+ #00
+ JMP2r
+
+@on_mouse ( -- )
+ save-mouse-event-tic
+ ;dialog LDA NOT ?{
+  .Mouse/state DEI NOT ?{
+   false ;dialog STA
+  }
+  BRK
+ }
+ mouse-rc #09 LTH SWP #09 LTH AND if ?{ mouse-rc ;draw-bg/focus-col STA ;draw-bg/focus-row STA } then
+ mouse-game-selector NOT ?{ mouse-game-selector ;draw-bg/focus-col STA }
+ .Mouse/state DEI ?&down
+ BRK
+ &down
+ ;draw-bg/focus-row LDA ( r )
+ ;draw-bg/focus-col LDA ( r c )
+ DUP2 ( r c r c )
+ #09 LTH SWP #09 LTH AND ?{ ( r c )
+  NIP
+  ;game# LDA2 digits
+  .Mouse/state DEI #01 NEQ ?{
+   DUP #09 NEQ ?{ ;digits/d4 LDA INC DUP #08 NEQ ?{ POP #00 } ;digits/d4 STA }
+   DUP #0a NEQ ?{ ;digits/d3 LDA INC DUP #0a NEQ ?{ POP #00 } ;digits/d3 STA }
+   DUP #0b NEQ ?{ ;digits/d2 LDA INC DUP #0a NEQ ?{ POP #00 } ;digits/d2 STA }
+   DUP #0c NEQ ?{ ;digits/d1 LDA INC DUP #0a NEQ ?{ POP #00 } ;digits/d1 STA }
+  }
+  .Mouse/state DEI #04 NEQ ?{
+   DUP #09 NEQ ?{ ;digits/d4 LDA DEC DUP #ff NEQ ?{ POP #07 } ;digits/d4 STA }
+   DUP #0a NEQ ?{ ;digits/d3 LDA DEC DUP #ff NEQ ?{ POP #09 } ;digits/d3 STA }
+   DUP #0b NEQ ?{ ;digits/d2 LDA DEC DUP #ff NEQ ?{ POP #09 } ;digits/d2 STA }
+   DUP #0c NEQ ?{ ;digits/d1 LDA DEC DUP #ff NEQ ?{ POP #09 } ;digits/d1 STA }
+  }
+  POP
+  ;digits/d4 LDA ;digits/d3 LDA ;digits/d2 LDA ;digits/d1 LDA
+  digits-to-short
+  ;game# STA2
+  init
+  BRK
+ }
+ ( r c )
+ .Mouse/state DEI #01 NEQ ?{ DUP2 inc-cell }
+ .Mouse/state DEI #04 NEQ ?{ DUP2 dec-cell }
+ POP2
+ check-finish
+ BRK
+
+@on_draw ( ? -- )
+ tic++
+ clear-screen-fg
+ clear-screen-bg
+ ( draw fg )
+  ( mouse pointer )
+  timeout-since-last-mouse-event unless ?{
+   ( draw mouse pointer )
+   ;sp_ptr_black .Screen/addr DEO2
+   #00 .Screen/auto DEO ( 0000:length=1 0 0:AutoAddr 0:AutoY 0:AutoX )
+   .Mouse/y DEI2 .Mouse/x DEI2 .Screen/x DEO2 .Screen/y DEO2
+   #41 .Screen/sprite DEO ( 0:1bp 1:fg 00:flip_xy 00:bg=alpha 01:fg=black )
+  } then
+ draw-bg
+ BRK
+
+@tile ( row col tile-color digit-color digit-n -- )
+ STH STH STH
+ #00 SWP #000e MUL2 [ ;rc-xy/board-x LDA2 #0001 ADD2 ] ADD2 .Screen/x DEO2 ( x <- col * 14 )
+ #00 SWP #000e MUL2 [ ;rc-xy/board-y LDA2 #0001 ADD2 ] ADD2 .Screen/y DEO2 ( y <- row * 14 )
+ #16 .Screen/auto DEO ( 0001:length=2 0 1:AutoAddr 1:AutoX 0:AutoY )
+ ;sp_tile0 .Screen/addr DEO2 STHkr .Screen/sprite DEO
+ ;sp_tile1 .Screen/addr DEO2 STHr .Screen/sprite DEO
+ #00 .Screen/auto DEO
+ STHr STHr DUP NOT ?&skip1
+ #08 MUL to-short ;sp_0w ADD2 .Screen/addr DEO2
+ .Screen/x DEI2 #0004 ADD2 .Screen/y DEI2 #fff4 ADD2 .Screen/y DEO2 .Screen/x DEO2
+ .Screen/sprite DEO
+ !&skip2
+ &skip1
+ POP POP
+ &skip2
+ JMP2r
+
+@tile-digit ( row col color n -- )
+ SWP2 ( n color row col )
+ to-ushort #000e MUL2 [ ;rc-xy/board-x LDA2 #0001 ADD2 ] ADD2 ( n color row x* )
+ ROT to-ushort #000e MUL2 [ ;rc-xy/board-y LDA2 #0001 ADD2 ] ADD2 ( n color x* y* )
+ draw-digit
+ JMP2r
+
+@draw-digit ( color n x* y* -- )
+ .Screen/y DEO2
+ .Screen/x DEO2
+ #08 MUL to-ushort ;sp_0w ADD2 .Screen/addr DEO2
+ .Screen/sprite DEO
+ JMP2r
+
+@draw-small-digit ( color n x* y* -- )
+ .Screen/y DEO2
+ .Screen/x DEO2
+ #08 MUL to-ushort ;sp_0 ADD2 .Screen/addr DEO2
+ .Screen/sprite DEO
+ JMP2r
+
+@draw-letter ( sp_addr x* y* -- )
+ .Screen/y DEO2
+ .Screen/x DEO2
+ .Screen/addr DEO2
+ #0d .Screen/sprite DEO
+ JMP2r
+
+@draw-letter-ofs ( sp_addr x-ofs -- )
+ to-ushort .Screen/x DEI2 ADD2 .Screen/x DEO2
+ .Screen/addr DEO2
+ #0d .Screen/sprite DEO
+ JMP2r
+
+@draw-letter-fg ( sp_addr x* y* -- )
+ .Screen/y DEO2
+ .Screen/x DEO2
+ .Screen/addr DEO2
+ ( 0:1bp 1:fg 00:flip_xy 00:bg=alpha 01:fg=black )
+ #41 .Screen/sprite DEO
+ JMP2r
+
+@draw-star ( f x* y* -- )
+ .Screen/y DEO2
+ .Screen/x DEO2
+ if ?{ ;sp_black_star .Screen/addr DEO2 }
+ else ?{ ;sp_white_star .Screen/addr DEO2 }
+ then
+ #0d .Screen/sprite DEO
+ JMP2r
+
+@draw-check ( x* y* -- )
+ .Screen/y DEO2
+ .Screen/x DEO2
+ ;sp_check .Screen/addr DEO2
+ #0d .Screen/sprite DEO
+ JMP2r
+
+@separator "-------- 0a 00
+
+@rc-xy ( r c -- x* y* )
+ #00 SWP #000e MUL2 [ LIT2 &board-x 0013 ] ADD2 STH2
+ #00 SWP #000e MUL2 [ LIT2 &board-y 0004 ] ADD2 STH2r SWP2
+ JMP2r
+%rc { rc-xy }
+
+@offset ( x* y* offset-x offset-y -- new-x* new-y* )
+ to-short STH2 to-short STH2r
+ ROT2 ADD2 STH2
+ ADD2 STH2r
+ JMP2r
+%ofs { offset }
+
+%if-else { ROT #01 JCN SWP POP } ( f a b - a-or-b )
+%if-else2 { #04 roll #01 JCN SWP2 POP2 } ( f a* b* -- a*-or-b* )
+
+@check-finish ( -- )
+ check-groups-uniq ;draw-bg/error-grp2 STA2 ;draw-bg/error-grp1 STA2
+ ;game# LDA2 pmem-get NOT ?{ JMP2r }
+ [ LIT &last-status 00 ]
+ board-filled ( last filled )
+ ;draw-bg/error-grp2 LDA2 ORA
+ ;draw-bg/error-grp1 LDA2 ORA
+ ORA NOT ( last filled no-error )
+ AND ( last filled&no-error )
+ DUP ;&last-status STA
+ SWP ( filled&no-error last )
+ NOT ( filled&no-error last==00 )
+ AND ( finish )
+ NOT ?{
+   ;game# LDA2 pmem-set
+   write-pmem
+   pmem-pop-count ;solved STA2
+   sfx1
+ }
+ JMP2r
+
+@draw-bg ( -- )
+ ( game# )
+ ;sp_#w [ #00ab #0017 ] draw-letter
+ ;game# LDA2 digits
+ ( 0:1bp 1:fg 00:flip_xy 00:bg=alpha 01:fg=black )
+ [ ;&focus-col LDA #0c EQU ] [ ;tic LDA2 u16-to-u8 #04 DIV #01 AND #0c ORA ] [ #0d ] if-else ( bg/fg=gray/black ) ;digits/d1 LDA [ #00cd #0017 ] draw-digit
+ [ ;&focus-col LDA #0b EQU ] [ ;tic LDA2 u16-to-u8 #04 DIV #01 AND #0c ORA ] [ #0d ] if-else ( bg/fg=gray/black ) ;digits/d2 LDA [ #00c5 #0017 ] draw-digit
+ [ ;&focus-col LDA #0a EQU ] [ ;tic LDA2 u16-to-u8 #04 DIV #01 AND #0c ORA ] [ #0d ] if-else ( bg/fg=gray/black ) ;digits/d3 LDA [ #00bd #0017 ] draw-digit
+ [ ;&focus-col LDA #09 EQU ] [ ;tic LDA2 u16-to-u8 #04 DIV #01 AND #0c ORA ] [ #0d ] if-else ( bg/fg=gray/black ) ;digits/d4 LDA [ #00b5 #0017 ] draw-digit
+ 
+ #00cd #0017 #fefe ofs #00d5 #001f #fefe ofs #01 line-rect ( 0:pix 0:bg 00:flip_xy 00:unused 01:fg=black )
+ #00c5 #0017 #fefe ofs #00cd #001f #fefe ofs #01 line-rect ( 0:pix 0:bg 00:flip_xy 00:unused 01:fg=black )
+ #00bd #0017 #fefe ofs #00c5 #001f #fefe ofs #01 line-rect ( 0:pix 0:bg 00:flip_xy 00:unused 01:fg=black )
+ #00b5 #0017 #fefe ofs #00bd #001f #fefe ofs #01 line-rect ( 0:pix 0:bg 00:flip_xy 00:unused 01:fg=black )
+ ( checkmark )
+ ;game# LDA2 pmem-get NOT ?{
+  [ #00d6 #0015 ] draw-check
+ }
+
+ ( difficulty )
+ #01 [ #00ac #0025 ] draw-star
+ ;game-metadata LDA #00 GTH [ #00b4 #0025 ] draw-star
+ ;game-metadata LDA #01 GTH [ #00bc #0025 ] draw-star
+ ;game-metadata LDA #02 GTH [ #00c4 #0025 ] draw-star
+ ;game-metadata LDA #03 GTH [ #00cc #0025 ] draw-star
+
+ ( pop-count )
+ ;sp_S [ #00a3 #0007 ] draw-letter
+ ;sp_o #04 draw-letter-ofs
+ ;sp_l #04 draw-letter-ofs
+ ;sp_v #04 draw-letter-ofs
+ ;sp_e #04 draw-letter-ofs
+ ;sp_d #04 draw-letter-ofs
+ ;sp_: #05 draw-letter-ofs
+
+ ;solved LDA2 digits
+ #01 STH ( | muffle-leading-zero )
+ #00c1 ;&solved-x STA2
+ ;digits/d4 LDA NOT ?{ #00 STH ANDr } STHkr ?{ #0d ;digits/d4 LDA [ ;&solved-x LDA2 DUP2 #0004 ADD2 ;&solved-x STA2 #0007 ] draw-small-digit }
+ ;digits/d3 LDA NOT ?{ #00 STH ANDr } STHkr ?{ #0d ;digits/d3 LDA [ ;&solved-x LDA2 DUP2 #0004 ADD2 ;&solved-x STA2 #0007 ] draw-small-digit }
+ ;digits/d2 LDA NOT ?{ #00 STH ANDr } STHkr ?{ #0d ;digits/d2 LDA [ ;&solved-x LDA2 DUP2 #0004 ADD2 ;&solved-x STA2 #0007 ] draw-small-digit }
+ #0d ;digits/d1 LDA [ LIT2 &solved-x $2 #0007 ] draw-small-digit
+ POPr
+
+ ;sp_/ [ ;&solved-x LDA2 #0004 ADD2 #0007 ] draw-letter
+ ;sp_8 #04 draw-letter-ofs
+ ;sp_0 #04 draw-letter-ofs
+ ;sp_0 #04 draw-letter-ofs
+ ;sp_0 #04 draw-letter-ofs
+
+
+ ;sp_A [ #00b3 #0050 ] draw-letter
+ ;sp_: #04 draw-letter-ofs
+ ;sp_U #08 draw-letter-ofs
+ ;sp_n #04 draw-letter-ofs
+ ;sp_d #04 draw-letter-ofs
+ ;sp_o #04 draw-letter-ofs
+
+ ;sp_S [ #00b3 #0058 ] draw-letter
+ ;sp_: #04 draw-letter-ofs
+ ;sp_R #08 draw-letter-ofs
+ ;sp_e #04 draw-letter-ofs
+ ;sp_d #04 draw-letter-ofs
+ ;sp_o #04 draw-letter-ofs
+
+ ;sp_Z [ #00b3 #0060 ] draw-letter
+ ;sp_: #04 draw-letter-ofs
+ ;sp_U #08 draw-letter-ofs
+ ;sp_p #04 draw-letter-ofs
+
+ ;sp_X [ #00b3 #0068 ] draw-letter
+ ;sp_: #04 draw-letter-ofs
+ ;sp_D #08 draw-letter-ofs
+ ;sp_o #04 draw-letter-ofs
+ ;sp_w #04 draw-letter-ofs
+ ;sp_n #04 draw-letter-ofs
+
+ ;&focus-row LDA ;&focus-col LDA
+ #09 LTH SWP #09 LTH AND if ?{
+   ;&focus-row LDA ;&focus-col LDA
+   rc-to-cell-idx ( idx )
+   to-ushort ;cell ADD2 ( addr* )
+   LDA ;&focus-n STA
+ } else ?{
+   #ff ;&focus-n STA
+ } then
+ 
+ #00 ( i=idx )
+ &tile-loop
+  STHk ( i | i )
+  to-short ;fixed-cell ADD2 LDA ( fixed | i )
+  STHkr to-short
+  ;cell
+  ADD2 LDA STH ( fixed | i n=cell_val )
+  ( color  0:1bp 0:bg 00:flip_xy 11:bg=gray 10:fg=pink )
+  NOT #0f ( gray ) #0e ( pink ) if-else ( tile-color | i n )
+  DUP #03 AND #20 SFT ( tile-color digit-bg-color | i n )
+
+  ( check constraints )
+  [ LIT2 &error-grp1 $2 LIT2 &error-grp2 $2 ]
+  OVRr STHr ( tile-color digit-bg-color n** i | i n )
+  cell-idx-to-grps ( tile-color digit-bg-color n1* n2* m1* m2* | i n )
+  ROT2 AND2 ( tile-color digit-bg-color n1* m1* m1*&m2* | i n )
+  ROT2 ROT2 AND2 ( tile-color digit-bg-color m1*&m2* n1*&m1* | i n )
+  ORA2  ( tile-color digit-bg-color (m1*&m2*)&(n1*&m1*) | i n )
+  ORA
+
+  [ LIT &focus-n 00 ] STHkr NEQ ?{ POP ;tic #0001 ADD2 LDA #05 DIV #01 AND }
+  #00 ( red ) #01 ( black ) if-else ORA ( tile-color digit-color | i n )
+  OVRr STHr ( tile-color digit-color i | i n )
+  #09 /MOD ( tile-color digit-color row col | i n )
+  SWP2 ( row col tile-color digit-color | i n )
+  STHr ( row col tile-color digit-color n | i )
+  tile ( | i )
+  STHr ( i )
+  INC DUP #51 NEQ
+  ?&tile-loop
+  POP
+
+ ( grid )
+ #0100 rc #0209 rc #01 dotted-line-rect ( 0:pix 0:bg 00:flip_xy 00:unused 00:fg=black )
+ #0400 rc #0509 rc #01 dotted-line-rect ( 0:pix 0:bg 00:flip_xy 00:unused 00:fg=black )
+ #0700 rc #0809 rc #01 dotted-line-rect ( 0:pix 0:bg 00:flip_xy 00:unused 01:fg=black )
+ #0001 rc #0902 rc #01 dotted-line-rect ( 0:pix 0:bg 00:flip_xy 00:unused 01:fg=black )
+ #0004 rc #0905 rc #01 dotted-line-rect ( 0:pix 0:bg 00:flip_xy 00:unused 02:fg=pink )
+ #0007 rc #0908 rc #01 dotted-line-rect ( 0:pix 0:bg 00:flip_xy 00:unused 00:fg=gray )
+ #0000 rc #0909 rc #01 line-rect ( 0:pix 0:bg 00:flip_xy 00:unused 01:fg=black )
+ #0300 rc #0609 rc #01 line-rect ( 0:pix 0:bg 00:flip_xy 00:unused 02:fg=pink )
+ #0003 rc #0906 rc #01 line-rect ( 0:pix 0:bg 00:flip_xy 00:unused 00:fg=gray )
+
+ ( focus )
+ [ LIT &focus-row 04 LIT &focus-col 04 ] 
+ STH2k ( r c | r c )
+ #09 LTH SWP #09 LTH AND NOT ?{
+  STH2kr rc #0101 ofs ( x* y* | r c ) STH2kr ( x* y* r c | r c ) rc #0d0d ofs ( x* y* x* y* | r c ) #01 dotted-line-rect
+  STH2kr rc STH2kr rc #0e0e ofs #01 line-rect
+ }
+ POP2r
+
+ ( dialog )
+ ;dialog LDA NOT ?{
+   show-dialog
+ }
+ 
+ JMP2r
+
+@print-date-num ( -- )
+ .DateTime/year DEI2k print-short-decimal
+ [ LIT "- ] .Console/write DEO
+ INC INC DEIk INC print-byte-decimal
+ [ LIT "- ] .Console/write DEO
+ INC DEI !print-byte-decimal
+ JMP2r
+
+@rnd-seed ( -- )
+ #00 .DateTime/second DEI
+ #00 .DateTime/minute DEI #60 SFT2 EOR2
+ #00 .DateTime/hour   DEI #c0 SFT2 EOR2 ;prng2/x STA2
+ #00 .DateTime/hour   DEI #04 SFT2
+ #00 .DateTime/day    DEI #10 SFT2 EOR2
+ #00 .DateTime/month  DEI #60 SFT2 EOR2
+     .DateTime/year  DEI2 #a0 SFT2 EOR2 ;prng2/y STA2
+ ( ;prng2/x LDA2 ;prng2/y LDA2 EOR2 )
+
+ prng2 prng2 ;prng2/x STA2 ;prng2/y STA2
+ prng2 prng2 ;prng2/y STA2 ;prng2/x STA2
+ JMP2r
+
+@prng2 ( -- number* )
+	( returns the next number in a (2^32-1)-long sequence )
+	( http://b2d-f9r.blogspot.com/2010/08/16-bit-xorshift-rng-now-with-more.html )
+	,&x LDR2
+	DUP2 #50 SFT2 EOR2
+	DUP2 #03 SFT2 EOR2
+	,&y LDR2 DUP2 ,&x STR2
+	DUP2 #01 SFT2 EOR2 EOR2
+	,&y STR2k POP
+	JMP2r
+	&x $2
+	&y $2
+
+@print-rnd-seed
+ ;prng2/x LDA2 print-short-hex
+ ;prng2/y LDA2 print-short-hex
+ JMP2r
+ 
+@rnd16 ( n* -- 0..n-1 )
+ rnd JMP2r
+
+@rnd ( n** -- 0..n-1 )
+ prng2
+ SWP2 MOD2
+ JMP2r
+
+(
+This project uses the font "TIC-80 wide font" created by "nesbox", which is made available under the Creative Commons CC0 Public Domain Dedication License. Learn more at https://creativecommons.org/publicdomain/zero/1.0/.
+)
+@sp_tile0 ffff ffff ffff ffff f8f8 f8f8 f8f8 f8f8
+@sp_tile1 ffff ffff ff00 0000 f8f8 f8f8 f800 0000
+@sp_ptr_alpha c0a0 9088 8488 a454
+@sp_ptr_black 80c0 e0f0 e0b0 1000
+@sp_: 0020 0020 0000 0000
+@sp_/ 0010 2040 0000 0000
+@sp_0 3050 5050 6000 0000
+@sp_1 2060 2020 7000 0000
+@sp_2 6010 2040 7000 0000
+@sp_3 6010 2010 6000 0000
+@sp_4 5050 7010 1000 0000
+@sp_5 7040 6010 6000 0000
+@sp_6 3040 7050 7000 0000
+@sp_7 7010 2040 4000 0000
+@sp_8 7050 7050 7000 0000
+@sp_9 7050 7010 1000 0000
+@sp_A 2050 7050 5000 0000
+@sp_B 6050 6050 6000 0000
+@sp_X 5050 2050 5000 0000
+@sp_Y 5050 2020 2000 0000
+@sp_U 5050 5050 3000 0000
+@sp_n 0060 5050 5000 0000
+@sp_w 0050 5070 7000 0000
+@sp_R 6050 7060 5000 0000
+@sp_p 0060 5050 6040 0000
+@sp_d 1030 5050 3000 0000
+@sp_e 0030 5060 3000 0000
+@sp_S 3040 2010 6000 0000
+@sp_o 0020 5050 2000 0000
+@sp_l 6020 2020 2000 0000
+@sp_v 0050 5050 2000 0000
+@sp_r 0050 6040 4000 0000
+@sp_y 0050 5030 1020 0000
+@sp_u 0050 5050 3000 0000
+@sp_s 0030 6010 6000 0000
+@sp_G 3040 5050 3000 0000
+@sp_h 4060 5050 5000 0000
+@sp_a 0060 3050 7000 0000
+@sp_c 0030 4040 3000 0000
+@sp_? 7010 2000 2000 0000
+@sp_Z 7010 2040 7000 0000
+@sp_C 3040 4040 3000 0000
+@sp_D 6050 5050 6000 0000
+@sp_black_star 1038 fe7c 3828 0000
+@sp_white_star 1028 c644 3828 0000
+@sp_check 0001 02c4 6c38 1000
+@sp_#w 287c 287c 2800 0000
+@sp_alert1 0001 0202 0405 0909
+@sp_alert2 0000 8080 4040 2020
+@sp_alert3 1111 2021 407f 0000
+@sp_alert4 1010 0808 04fc 0000
+
+@sp_0w 70d8 e8c8 7000 0000
+@sp_1w 3070 3030 7800 0000
+@sp_2w f018 70c0 f800 0000
+@sp_3w f818 3098 7000 0000
+@sp_4w 3070 d0f8 1000 0000
+@sp_5w f8c0 f018 f000 0000
+@sp_6w 70c0 f0c8 7000 0000
+@sp_7w f818 3060 c000 0000
+@sp_8w 70c8 70c8 7000 0000
+@sp_9w 70c8 7808 7000 0000
+
+@line-rect ( x1* y1* x2* y2* color -- )
+	>r
+	DUP2 ;&ver-y2 STA2 ,&hor-y2 STR2
+	DUP2 ;&ver-x2 STA2 ,&hor-x2 STR2
+	DUP2 ;&ver-y1 STA2 ,&hor-y1 STR2
+	DUP2 ;&ver-x1 STA2 ,&hor-x1 STR2
+	( horizontal )
+	[ LIT2 &hor-x2 $2 ] INC2 [ LIT2 &hor-x1 $2 ]
+	&hor
+		DUP2 .Screen/x DEO2
+		[ LIT2 &hor-y1 $2 ] .Screen/y DEO2 r@ .Screen/pixel DEOk
+		[ LIT2 &hor-y2 $2 ] .Screen/y DEO2 DEO
+		INC2 GTH2k ?&hor
+	DROP2 DROP2
+	( vertical )
+	[ LIT2 &ver-y2 $2 ] [ LIT2 &ver-y1 $2 ]
+	&ver
+		DUP2 .Screen/y DEO2
+		[ LIT2 &ver-x1 $2 ] .Screen/x DEO2 r@ .Screen/pixel DEOk
+		[ LIT2 &ver-x2 $2 ] .Screen/x DEO2 DEO
+		INC2 GTH2k ?&ver
+	DROP2 DROP2
+	DROPr
+RET
+
+@x+y-mod2 ( -- flag )
+ .Screen/x DEI2
+ .Screen/y DEI2
+ ADD2
+ #0001 AND2 SWP POP
+ JMP2r
+
+@x+y-mod2-info ( -- flag )
+ .Screen/x DEI2 DUP2 print-short-decimal CR
+ .Screen/y DEI2 DUP2 print-short-decimal CR
+ ADD2
+ ;tic LDA2 ADD2 ( test )
+ #0001 AND2 SWP POP
+ DUP print-byte-decimal CR
+ JMP2r
+
+@dotted-line-rect ( x1* y1* x2* y2* color -- )
+	>r
+	DUP2 ;&ver-y2 STA2 ,&hor-y2 STR2
+	DUP2 ;&ver-x2 STA2 ,&hor-x2 STR2
+	DUP2 ;&ver-y1 STA2 ,&hor-y1 STR2
+	DUP2 ;&ver-x1 STA2 ,&hor-x1 STR2
+	( horizontal )
+	[ LIT2 &hor-x2 $2 ] INC2 [ LIT2 &hor-x1 $2 ]
+	&hor
+		DUP2 .Screen/x DEO2
+		[ LIT2 &hor-y1 $2 ] .Screen/y DEO2 x+y-mod2 ?{ r@ .Screen/pixel DEO }
+		[ LIT2 &hor-y2 $2 ] .Screen/y DEO2 x+y-mod2 ?{ r@ .Screen/pixel DEO }
+		INC2 GTH2k ?&hor
+	DROP2 DROP2
+	( vertical )
+	[ LIT2 &ver-y2 $2 ] [ LIT2 &ver-y1 $2 ]
+	&ver
+		DUP2 .Screen/y DEO2
+		[ LIT2 &ver-x1 $2 ] .Screen/x DEO2 x+y-mod2 ?{ r@ .Screen/pixel DEO }
+		[ LIT2 &ver-x2 $2 ] .Screen/x DEO2 x+y-mod2 ?{ r@ .Screen/pixel DEO }
+		INC2 GTH2k ?&ver
+	DROP2 DROP2
+	DROPr
+RET
+
+@sp_bg ffff ffff ffff ffff ffff ffff ffff ffff
+@dialog 00
+@dialog-goahead 00
+@dialog-goahead-game# $2
+
+@show-dialog ( -- )
+ #0010 ;&dialog-x STA2
+ #0018 ;&dialog-y STA2
+ #0070 ;&dialog-w STA2
+ #0028 ;&dialog-h STA2
+ #01 [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] [ ;&dialog-w LDA2 ] [ ;&dialog-h LDA2 ] round-rect
+ #0f [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #0101 ofs [ ;&dialog-w LDA2 ] [ ;&dialog-h LDA2 ] #fefe ofs round-rect
+
+ [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #0808 ofs .Screen/y DEO2 .Screen/x DEO2
+ ;sp_alert1 .Screen/addr DEO2
+ #16 .Screen/auto DEO ( 0001:length=2 0 1:AutoAddr 1:AutoX 0:AutoY )
+ #0d ( 00001101  ( 0:1bp 0:fg 00:flip_xy 00:bg=alpha 01:fg=black ) )
+ DUP .Screen/sprite DEO
+ .Screen/sprite DEO
+ #00 .Screen/auto DEO
+
+ ;sp_A [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #1c0c ofs draw-letter 
+ ;sp_r #04 draw-letter-ofs 
+ ;sp_e #04 draw-letter-ofs 
+ ;sp_y #06 draw-letter-ofs
+ ;sp_o #04 draw-letter-ofs
+ ;sp_u #04 draw-letter-ofs
+ ;sp_s #06 draw-letter-ofs
+ ;sp_u #04 draw-letter-ofs
+ ;sp_r #04 draw-letter-ofs
+ ;sp_e #04 draw-letter-ofs
+ ;sp_? #04 draw-letter-ofs
+
+ ;sp_G [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #0c1c ofs draw-letter
+ ;sp_o #04 draw-letter-ofs
+ ;sp_A #06 draw-letter-ofs
+ ;sp_h #04 draw-letter-ofs
+ ;sp_e #04 draw-letter-ofs
+ ;sp_a #04 draw-letter-ofs
+ ;sp_d #04 draw-letter-ofs
+
+ ;sp_C #16 draw-letter-ofs
+ ;sp_a #04 draw-letter-ofs
+ ;sp_n #04 draw-letter-ofs
+ ;sp_c #04 draw-letter-ofs
+ ;sp_e #04 draw-letter-ofs
+ ;sp_l #04 draw-letter-ofs
+
+ ;dialog-goahead LDA NOT ?{
+  #01 [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #0d19 ofs #0028 #000b round-rectb
+ }
+ ;dialog-goahead LDA ?{
+  #01 [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #3619 ofs #0028 #000b round-rectb
+ }
+ #01 [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #0e1a ofs #0026 #0009 round-rectb
+ #01 [ ;&dialog-x LDA2 ] [ ;&dialog-y LDA2 ] #371a ofs #0026 #0009 round-rectb
+ JMP2r
+ &dialog-x $2 &dialog-y $2 &dialog-w $2 &dialog-h $2
+
+@round-rectb ( color x* y* w* h* -- )
+ ;&h STA2 ;&w STA2 ;&y STA2 ;&x STA2 ;&c STA
+
+ [ ;&c LDA ] [ ;&x LDA2 INC2 ] [ ;&y LDA2 ]                          [ ;&w LDA2 #0002 SUB2 ] [ #0001 ] rect
+ [ ;&c LDA ] [ ;&x LDA2 INC2 ] [ ;&y LDA2 ;&h LDA2 ADD2 #0001 SUB2 ] [ ;&w LDA2 #0002 SUB2 ] [ #0001 ] rect
+
+ [ ;&c LDA ] [ ;&x LDA2 ]                         [ ;&y LDA2 INC2 ] [ #0001 ] [ ;&h LDA2 #0002 SUB2 ] rect
+ [ ;&c LDA ] [ ;&x LDA2 ;&w LDA2 ADD2 #0001 SUB2 ] [ ;&y LDA2 INC2 ]      [ #0001 ] [ ;&h LDA2 #0002 SUB2 ] rect
+
+ [ ;&c LDA ] [ ;&x LDA2 INC2 ]                     [ ;&y LDA2 INC2 ] [ #0001 ] [ #0001 ] rect
+ [ ;&c LDA ] [ ;&x LDA2 ;&w LDA2 ADD2 #0002 SUB2 ] [ ;&y LDA2 INC2 ] [ #0001 ] [ #0001 ] rect
+ [ ;&c LDA ] [ ;&x LDA2 INC2 ]                     [ ;&y LDA2 ;&h LDA2 ADD2 #0002 SUB2 ] [ #0001 ] [ #0001 ] rect
+ [ ;&c LDA ] [ ;&x LDA2 ;&w LDA2 ADD2 #0002 SUB2 ] [ ;&y LDA2 ;&h LDA2 ADD2 #0002 SUB2 ] [ #0001 ] [ #0001 ] rect
+
+ JMP2r
+ &h $2
+ &w $2
+ &y $2
+ &x $2
+ &c $1
+
+@round-rect ( color x* y* w* h* -- )
+ #08 pick #08 pick #08 pick #08 pick
+ #08 pick #08 pick #08 pick #08 pick
+ #08 pick ( color x* y* w* h* color x* y* w* h* )
+ STH2 STH2 STH2 STH2
+ STH2r INC2 STH2r STH2r #0002 SUB2 STH2r rect
+ STH2 STH2 STH2 STH2
+ STH2r STH2r INC2 STH2r STH2r #0002 SUB2 rect
+ JMP2r
+
+@pix-rect ( color x* y* w* h* -- )
+ #08 roll ;&color STA
+ ROT2 ( x* w* h* y* )
+ DUP2 ;&y0 STA2
+ ADD2 ( x* w* y1* )
+ ;&y-sentinel STA2 ( x* w* )
+ SWP2 ( w* x* )
+ DUP2 ;&x0 STA2
+ ADD2 ( x1* )
+ ;&x-sentinel STA2
+ ;&y0 LDA2 ( y* )
+ &loop-y
+ DUP2 ;&y-sentinel LDA2 EQU2 ?{
+  DUP2 .Screen/y DEO2
+  ;&x0 LDA2 ( y* x* )
+  &loop-x
+  DUP2 ;&x-sentinel LDA2 EQU2 ?{
+   DUP2 .Screen/x DEO2
+   [ LIT &color $1 ] .Screen/pixel DEO
+   INC2 ( x*++ )
+   !&loop-x
+  }
+  POP2 ( y* )
+  INC2 ( y*++ )
+  !&loop-y
+ }
+ POP2
+ JMP2r
+ &x0 $2
+ &y0 $2
+ &x-sentinel $2
+ &y-sentinel $2
+
+@rect ( color x* y* w* h* -- )
+ #08 roll
+ DUP ;&pix-color STA
+ DUP ;&color STA
+ DUP ;&color2 STA
+ DUP ;&color3 STA
+ ;&color4 STA
+ ( x* y* w* h* )
+ DUP4 ( x* y* w* h* w* h* )
+ #0008 LTH2 ( x* y* w* h* w* f )
+ ROT ROT    ( x* y* w* h* f w* )
+ #0008 LTH2 ( x* y* w* h* f f )
+ ORA ( x* y* w* h* f )
+ NOT ?{
+  STH2 STH2 STH2 STH2
+  [ LIT &pix-color $1 ]
+  STH2r STH2r STH2r STH2r
+  pix-rect
+  JMP2r
+ }
+ #00 .Screen/auto DEO
+ ;sp_bg .Screen/addr DEO2
+ ( x* y* w* h* )
+ SWP4 ( w* h* x* y* )
+ ;&y STA2 ( w* h* x* )
+ ;&x STA2 ( w* h* )
+
+ #0008 /MOD2 ( w* hq* hr* )
+ u16-to-u8 ;&hr STA ( w* hq* )
+ STH2 ( w* | hq* )
+
+ #0008 /MOD2 ( wq* wr* | hq* )
+ u16-to-u8 ( wq* wr | hq* )
+ DUP ;&wr STA ( wq* wr | hq* )
+ ;&wr2 STA ( wq* | hq* )
+ DUP2 ;&wq STA2 ( wq* | hq* )
+ ;&wq2 STA2 ( | hq* )
+
+ STH2r ( hq* )
+ &loop-y
+ [ LIT2 &y $2 ] .Screen/y DEO2
+ [ LIT2 &x $2 ] DUP2 ;&x1 STA2 ;&x2 STA2
+ DUP2 #0000 EQU2 ?{ ( hq* )
+  STH2 ( | hq* )
+  [ LIT2 &wq $2 ] ( wq* | hq* )
+  &loop-x
+  DUP2 #0000 EQU2 ?{ ( wq* | hq* )
+   [ LIT2 &x1 $2 ] .Screen/x DEO2
+   [ LIT &color 0f ] .Screen/sprite DEO ( 0:2bp 0:fg 00:flip_xy 11:bg=gray 11:fg=gray )
+   ;&x1 LDA2 #0008 ADD2 ;&x1 STA2
+   DEC2 ( wq* | hq* )
+   !&loop-x
+  }
+  [ LIT &wr $1 ] DUP NOT ?{
+   ( last col )
+   DUP to-ushort .Screen/x DEI2 ADD2 .Screen/x DEO2
+   [ LIT &color2 0f ] .Screen/sprite DEO
+  } POP
+  ;&y LDA2 #0008 ADD2 ;&y STA2
+  POP2 
+  STH2r ( hq* )
+  DEC2
+  !&loop-y
+ }
+ POP2
+
+ [ LIT &hr $1 ] DUP NOT ?{
+  ( last row )
+  DUP to-ushort
+  .Screen/y DEI2 #0008 SUB2
+  ADD2 .Screen/y DEO2
+  [ LIT2 &wq2 $2 ] ( wq* )
+  &loop-x2
+  DUP2 #0000 EQU2 ?{ ( wq* )
+   [ LIT2 &x2 $2 ] .Screen/x DEO2
+   [ LIT &color3 0f ] .Screen/sprite DEO ( 0:2bp 0:fg 00:flip_xy 11:bg=gray 11:fg=gray )
+   ;&x2 LDA2 #0008 ADD2 ;&x2 STA2
+   DEC2 ( wq* )
+   !&loop-x2
+  }
+  POP2
+  [ LIT &wr2 $1 ] DUP NOT ?{
+   ( last col )
+   DUP to-ushort .Screen/x DEI2 ADD2 .Screen/x DEO2
+   [ LIT &color4 0f ] .Screen/sprite DEO
+  } POP
+ } POP
+ JMP2r
+ 
+@clear-screen-fg ( -- )
+  #0000 .Screen/x DEO2
+  #0000 .Screen/y DEO2
+  #c0 .Screen/pixel DEO  ( 1:fill 1:fg 00:flip_xy 00:unused 00:fg=alpha )
+  JMP2r
+
+@clear-screen-bg ( -- )
+  #0000 .Screen/x DEO2
+  #0000 .Screen/y DEO2
+  #83 .Screen/pixel DEO  ( 1:fill 0:bg 00:flip_xy 00:unused 11:fg=gray )
+  JMP2r
+  
+@clear-screen-bk ( -- )
+  ;sp_bg .Screen/addr DEO2
+
+  #0088 ( .Screen/y DEI2 )
+  #03 SFT2 ( y = 17 )
+
+  &loopy
+   #0001 SUB2 ( y-- )
+   DUP2 #30 SFT .Screen/y DEO2
+
+   #00f0  ( .Screen/x DEI2 )
+   #03 SFT2 ( x = 30 )
+   
+   &loopx
+    #0001 SUB2 ( x-- )
+    DUP2 #30 SFT .Screen/x DEO2
+
+    #42 .Screen/sprite DEO
+    OVR2 OVR2 ADD2 SWP POP
+    #01 AND ?{ #43 .Screen/sprite DEO }
+    ORAk ?&loopx
+    POP2
+
+  ORAk ?&loopy
+  POP2
+   
+  RET
+
+( %3PICK { >r OVR r> SWP } ( a b c -- a b c a ) )
+( %4PICK { >r 3PICK r> SWP } ( a b c d -- a b c d a ) )
+( %5PICK { >r 4PICK r> SWP } ( a b c d e -- a b c d e a ) )
+( %4ROLL { >r >r SWP r> SWP r> SWP } ( a b c d -- b c d a ) )
+( %5ROLL { >r 4ROLL r> SWP } )
+( %6ROLL { >r 5ROLL r> SWP } )
+
+@wst ( n --  print top n bytes of wst )
+ #01 SUB ( from n-1 down to 0 )
+ ,&n STR
+ &loop
+  [ LIT &n $1 ] DUP #ff EQU ?&exit
+  DUP #01 SUB ,&n STR ( n-- )
+  SPACE
+  pick
+  print-byte-hex
+  ,&loop JMP
+ &exit
+ POP
+ LIT ". EMIT
+ CR
+ JMP2r
+
+@rst ( n --  print top n bytes of rst )
+ ;&ret STH2 STA2r
+ #01 SUB
+ DUP ,&n1 STR
+ DUP ,&n2 STR
+ DUP ,&n3 STR
+ ,&n4 STR
+ &loop1
+  [ LIT &n1 $1 ] DUP #ff EQU ?&next
+  #01 SUB ,&n1 STR ( n-- )
+  STHr
+  ,&loop1 JMP
+ &next
+ POP
+ &loop
+  [ LIT &n2 $1 ] DUP #ff EQU ?&next2
+  DUP #01 SUB ,&n2 STR ( n-- )
+  SPACE
+  [ LIT &n4 $1 ] SWP SUB pick print-byte-hex
+  ,&loop JMP
+ &next2
+ POP
+ LIT ". EMIT
+ CR
+ &loop2 
+  [ LIT &n3 $1 ] DUP #ff EQU ?&exit
+  #01 SUB ,&n3 STR ( n-- )
+  STH
+  ,&loop2 JMP
+ &exit
+ POP
+ [ LIT2r &ret $2 ]
+ JMP2r
+
+( 0 pick = dup, 1 pick = over )
+@pick ( n1 -- n2 )
+ DUP ?&skip1 
+  POP DUP JMP2r ( n1 == 0 )
+ &skip1
+ DUP #01 SUB ?&skip2
+  POP OVR JMP2r ( n1 == 1 )
+ &skip2
+ #01 SUB ( n1 > 1 )
+ DUP ,&n1a STR
+ ,&n1b STR
+ &loop1
+  STH
+  [ LIT &n1a $1 ] #01 SUB DUP ,&n1a STR
+  ?&loop1
+ OVR
+ &loop2
+  STHr SWP
+  [ LIT &n1b $1 ] #01 SUB DUP ,&n1b STR
+  ?&loop2
+ JMP2r
+
+( 0 roll = nop, 1 roll = swap, 2 roll = rot )
+@roll ( n1 -- n2 )
+ DUP ?&skip1
+  POP ( nop ) JMP2r ( n1 == 0 )
+ &skip1
+ DUP #01 SUB ?&skip2
+  POP SWP JMP2r ( n1 == 1 )
+ &skip2
+ ( n1 > 2 )
+ #01 SUB
+ DUP ,&n1a STR
+ ,&n1b STR
+ &loop1
+  STH
+  [ LIT &n1a $1 ] #01 SUB DUP ,&n1a STR
+  ?&loop1
+ SWP
+ &loop2
+  STHr SWP
+  [ LIT &n1b $1 ] #01 SUB DUP ,&n1b STR
+  ?&loop2
+ JMP2r
+
+(
+~projects/sounds/bdr1.pcm.tal ( CC-DD )
+~projects/sounds/bdr2.pcm.tal ( CC )
+~projects/sounds/chat.pcm.tal ( BB-DD )
+~projects/sounds/cym1.pcm.tal ( BB-CC )
+~projects/sounds/hhat.pcm.tal ( BB-CC )
+~projects/sounds/kck1.pcm.tal ( BB-DD )
+~projects/sounds/kck2.pcm.tal ( BB-DD )
+~projects/sounds/ohat.pcm.tal ( BB )
+~projects/sounds/pad1.pcm.tal ( DD )
+~projects/sounds/pad2.pcm.tal ( DD )
+~projects/sounds/piano.pcm.tal ( 22-66 )
+~projects/sounds/ride.pcm.tal ( DD )
+~projects/sounds/saw.pcm.tal ( 22-66 )
+~projects/sounds/sid1.pcm.tal ( BB-DD )
+~projects/sounds/sid2.pcm.tal ( BB-DD )
+~projects/sounds/sin.pcm.tal ( 33-66 )
+~projects/sounds/snr1.pcm.tal ( BB-DD )
+~projects/sounds/snr2.pcm.tal ( BB-DD )
+~projects/sounds/sqr.pcm.tal ( 33-66 )
+~projects/sounds/sub1.pcm.tal ( BB-DD )
+~projects/sounds/syn1.pcm.tal ( 33-66 )
+~projects/sounds/syn2.pcm.tal ( 33-66 )
+~projects/sounds/tri.pcm.tal ( 33-66 )
+~projects/sounds/violin.pcm.tal ( 33-66 )
+)
+@sfx1 ( start, finish )
+ ;sfx1-pcm-end ;sfx1-pcm-start SUB2 #1000 LTH2 STHk #1177 #0000 if-else2 .Audio0/adsr DEO2
+ #ff .Audio0/volume DEO
+ ;sfx1-pcm-start DUP2 .Audio0/addr DEO2
+ ;sfx1-pcm-end   SWP2 SUB2 [ #22 SFT2 ( When the length of a PCM audio sample is not divisible by 4, for some reason, a 'pop' noise appears at the end of the audio. Therefore, the length is trimmed to a multiple of 4. ) ] .Audio0/length DEO2
+ STHkr ?{ ( sampling )
+  ( 80 - ff ) [ LIT &pitch1 b0 ] .Audio0/pitch DEO
+ }
+ STHr NOT ?{ ( wave form )
+  ( 00 - 7f ) [ LIT &pitch2 00 ] .Audio0/pitch DEO
+ }
+ JMP2r
+
+@sfx2 ( undo/redo )
+ ;sfx2-pcm-end ;sfx2-pcm-start SUB2 #1000 LTH2 STHk #1177 #0000 if-else2 .Audio0/adsr DEO2
+ #ff .Audio0/volume DEO
+ ;sfx2-pcm-start DUP2 .Audio0/addr DEO2
+ ;sfx2-pcm-end   SWP2 SUB2 [ #22 SFT2 ( When the length of a PCM audio sample is not divisible by 4, for some reason, a 'pop' noise appears at the end of the audio. Therefore, the length is trimmed to a multiple of 4. ) ] .Audio0/length DEO2
+ STHkr ?{ ( sampling )
+  ( 80 - ff ) [ LIT &pitch1 b0 ] .Audio0/pitch DEO
+ }
+ STHr NOT ?{ ( wave form )
+  ( 00 - 7f ) [ LIT &pitch2 00 ] .Audio0/pitch DEO
+ }
+ JMP2r
+
+@sfx1-pcm-start
+~sudoku-sfx1-22050.pcm.tal ( b0 )
+@sfx1-pcm-end
+
+@sfx2-pcm-start
+~sudoku-sfx2-22050.pcm.tal ( b0 )
+@sfx2-pcm-end
