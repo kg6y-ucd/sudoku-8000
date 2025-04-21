@@ -68,7 +68,9 @@
 ~math32.tal 
 
 @random-unsolved-game# ( -- n* )
- #1f40 ;solved LDA2 SUB2 DUP2 #0000 NEQ2 ?{ POP2 #1f3f JMP2r }
+ #1f40 ( =8000 ) ;solved LDA2 SUB2
+ DUP2 ;&remaining STA2
+ DUP2 #0000 NEQ2 ?{ POP2 #1f3f ( =7999 ) JMP2r }
  rnd16 ;&nth STA2
  #0000 #0000 STH2 ( nth-unsolved | game# )
  &loop
@@ -80,6 +82,8 @@
  POP2
  STH2r
  DEC2
+ DUP2 ;pmem/last-selected-game# LDA2 NEQ2 [ LIT2 &remaining $2 ] #0001 EQU2 ORA ?{ random-unsolved-game# JMP2r }
+ DUP2 ;pmem/last-selected-game# STA2 write-pmem
  JMP2r
 
 @init ( -- )
@@ -108,7 +112,7 @@
 @game-metadata $1
 @cmd [ 01 0020 &src-bank-no $2 &src-bank-addr $2 0000 =decomp-board/buffer ]
 @pmem-file "sudoku-8000.mem 00
-@pmem $400
+@pmem $3fe &last-selected-game# $2
 
 @fact ( n -- n** )
  STH ( | n )
