@@ -19,3 +19,53 @@ Information about which Sudoku puzzles have been solved is saved in a 1KB file c
 We used the export command from TIC-80 to extract a WAV file, which was converted to mono using Audacity and exported in RAW format as unsigned 8-bit PCM at 22050 Hz.
 ### Game data generation
 We have programmatically generated 8,000 Sudoku puzzles with unique solutions. Using solutions generated with Alloy as a base, we apply a method that randomly increases the number of blank spaces while maintaining the condition of having a unique solution.
+#### Data format
+Each Sudoku puzzle's data is stored in 32 bytes. The internal format of the 32 bytes is as follows:  
+```
+|-------+-------------|
+|  byte | description |
+|-------+-------------|
+|   0-3 | row1        |
+|   4-7 | row2        |
+|  8-11 | row3        |
+| 12-15 | row4        |
+| 16-19 | row5        |
+| 20-23 | row6        |
+| 24-27 | row7        |
+| 28-31 | row8        |
+|-------+-------------|
+```
+row1 to row8 each consist of 4 bytes. row1 to row7 contain the solutions for each row, the positions of blank spaces, information on whether a specific column in the 9th row is blank or not, and one particular bit of metadata (7 bits) representing the difficulty level of the Sudoku. row8 consists of the solution for the 8th row, the positions of blank spaces, and information on whether the last two specific columns in the 9th row are blank. The internal format of these 4 bytes is described below.
+
+row1 to row7
+```
+|-------+--------------------------------|
+|   bit | description of row-n           |
+|-------+--------------------------------|
+| 31-11 | solution                       |
+|    10 | 0:column 1 of row-n is blank   |
+|     9 | 0:column 2 of row-n is blank   |
+|   ... |             ...                |
+|     3 | 0:column 8 of row-n is blank   |
+|     2 | 0:column 9 of row-n is blank   |
+|     1 | bit-n of metadata              |
+|     0 | 0:column n of 9th row is blank |
+|-------+--------------------------------|
+```
+row8
+```
+|-------+--------------------------------|
+|   bit | description of row8            |
+|-------+--------------------------------|
+| 31-11 | solution                       |
+|    10 | 0:column 1 of row8 is blank    |
+|     9 | 0:column 2 of row8 is blank    |
+|   ... |             ...                |
+|     3 | 0:column 8 of row8 is blank    |
+|     2 | 0:column 9 of row8 is blank    |
+|     1 | 0:column 8 of 9th row is blank |
+|     0 | 0:column 9 of 9th row is blank |
+|-------+--------------------------------|
+```
+`solution` is the number assigned to the permutation of nine digits from 1 to 9. 0 corresponds to (1,2,3,4,5,6,7,8,9), and 362879 corresponds to (9,8,7,6,5,4,3,2,1).
+The solution for each column in the 9th row is determined by the numbers that do not appear in rows 1 to 8.
