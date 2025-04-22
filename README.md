@@ -35,10 +35,12 @@ Each Sudoku puzzle's data is stored in 32 bytes. The internal format of the 32 b
 | 28-31 | row8        |
 |-------+-------------|
 ```
-row1 to row8 each consist of 4 bytes. row1 to row7 contain the solutions for each row, the positions of blank spaces, information on whether a specific column in the 9th row is blank or not, and one particular bit of metadata (7 bits) representing the difficulty level of the Sudoku. row8 consists of the solution for the 8th row, the positions of blank spaces, and information on whether the last two specific columns in the 9th row are blank. The internal format of these 4 bytes is described below.
+`row1` to `row8` each consist of 4 bytes. `row1` to `row7` contain the solutions for each row, the positions of blank spaces, information on whether a specific column in the 9th row is blank or not, and one particular bit of metadata (7 bits) representing the difficulty level of the Sudoku.  
+`row8` consists of the solution for the 8th row, the positions of blank spaces, and information on whether the last two specific columns in the 9th row are blank.  
+The internal format of these 4 bytes is described below.
 
-row1 to row7
 ```
+row1 to row7
 |-------+--------------------------------|
 |   bit | description of row-n           |
 |-------+--------------------------------|
@@ -52,9 +54,8 @@ row1 to row7
 |     1 | bit-n of metadata              |
 |     0 | 0:column n of 9th row is blank |
 |-------+--------------------------------|
-```
+
 row8
-```
 |-------+--------------------------------|
 |   bit | description of row8            |
 |-------+--------------------------------|
@@ -69,6 +70,6 @@ row8
 |     0 | 0:column 9 of 9th row is blank |
 |-------+--------------------------------|
 ```
-`solution` is the number assigned to the permutation of nine digits from 1 to 9. 0 corresponds to (1,2,3,4,5,6,7,8,9), and 362879 corresponds to (9,8,7,6,5,4,3,2,1).
-The solution for each column in the 9th row is determined by the numbers that do not appear in rows 1 to 8.
-Bit 31 of r1 to r8 is fixed at 0. These 8 bits in total may potentially be used for some purpose in the future. The current program assumes that bit 31 is 0 and treats it as the most significant bit of the solution, so some minor modifications may be necessary.
+`solution` is the number assigned to the permutation of nine digits from 1 to 9. 0 corresponds to (1,2,3,4,5,6,7,8,9), and 362879 corresponds to (9,8,7,6,5,4,3,2,1).  
+The solution for each column in the 9th row is determined by the numbers that do not appear in rows 1 to 8.  
+Bit 31 of `row1` to `row8` is fixed at 0. These 8 bits in total may potentially be used for some purpose in the future. The current program assumes that bit 31 is 0 and treats it as part of the `solution` (the most significant bit), so some minor adjustments may be necessary.
