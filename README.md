@@ -42,7 +42,8 @@ row1 to row7
 |-------+--------------------------------|
 |   bit | description of row-n           |
 |-------+--------------------------------|
-| 31-11 | solution                       |
+|    31 | 0 (unused)                     |
+| 30-11 | solution                       |
 |    10 | 0:column 1 of row-n is blank   |
 |     9 | 0:column 2 of row-n is blank   |
 |   ... |             ...                |
@@ -57,7 +58,8 @@ row8
 |-------+--------------------------------|
 |   bit | description of row8            |
 |-------+--------------------------------|
-| 31-11 | solution                       |
+|    31 | 0 (unused)                     |
+| 30-11 | solution                       |
 |    10 | 0:column 1 of row8 is blank    |
 |     9 | 0:column 2 of row8 is blank    |
 |   ... |             ...                |
@@ -69,3 +71,4 @@ row8
 ```
 `solution` is the number assigned to the permutation of nine digits from 1 to 9. 0 corresponds to (1,2,3,4,5,6,7,8,9), and 362879 corresponds to (9,8,7,6,5,4,3,2,1).
 The solution for each column in the 9th row is determined by the numbers that do not appear in rows 1 to 8.
+Bit 31 of r1 to r8 is fixed at 0. These 8 bits in total may potentially be used for some purpose in the future. The current program assumes that bit 31 is 0 and treats it as the most significant bit of the solution, so some minor modifications may be necessary.
