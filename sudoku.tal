@@ -393,7 +393,7 @@
  AND #00 NEQ
  JMP2r
 
-@digits-to-short ( n1000 n100 n10 n1 -- n* )
+@digits-to-short ( n100 n100 n10 n1 -- n* )
  to-ushort STH2
  to-ushort #000a MUL2 STH2
  to-ushort #0064 MUL2 STH2
@@ -1419,7 +1419,7 @@ RET
  .Screen/x DEI2
  .Screen/y DEI2
  ADD2
- #0001 AND2 SWP POP
+ #0001 AND2 SWP POP NOT
  JMP2r
 
 @x+y-mod2-info ( -- flag )
