@@ -99,6 +99,7 @@
  ;game# LDA2 pmem-get NOT ?{
   ;cell-solution ;cell #0051 memcpy
  }
+ check-groups-uniq ;draw-bg/error-grp2 STA2 ;draw-bg/error-grp1 STA2
  JMP2r
 
 @board-dirty ( -- f )
