@@ -868,7 +868,7 @@
  rc-to-cell-idx DUP ( idx idx | r c )
  to-ushort ;cell ADD2 ( idx addr* | r c )
  ROT to-ushort ;fixed-cell ADD2 ( addr* addr-fixed* | r c )
- LDA NOT ?{ POP2 JMP2r } ( addr* | r c )
+ LDA NOT ?{ POP2 POP2r JMP2r } ( addr* | r c )
  DUP2 ( addr* addr* | r c )
  LDA ( addr* n | r c )
  STHk ( addr* n | r c n )
