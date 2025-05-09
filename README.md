@@ -19,6 +19,7 @@ Information about which Sudoku puzzles have been solved is saved in a 1KB file c
 We used the export command from TIC-80 to extract a WAV file, which was converted to mono using Audacity and exported in RAW format as unsigned 8-bit PCM at 22050 Hz.
 ### Game data generation
 We have programmatically generated 8,000 Sudoku puzzles with unique solutions. Using solutions generated with Alloy as a base, we apply a method that randomly increases the number of blank spaces while maintaining the condition of having a unique solution.
+This logic is available at https://github.com/kg6y-ucd/sudoku-gen
 #### Data format
 Each Sudoku puzzle's data is stored in 32 bytes. The internal format of the 32 bytes is as follows:  
 ```
